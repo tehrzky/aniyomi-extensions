@@ -121,7 +121,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             // Extract episode number from the title
             val titleElement = element.selectFirst("h3.title")
             val titleText = titleElement?.text() ?: ""
-            
+
             // Extract episode number using regex
             val episodeNum = Regex("""Episode\s*(\d+)""").find(titleText)?.groupValues?.get(1)
                 ?: Regex("""EP?\s*(\d+)""").find(titleText)?.groupValues?.get(1)
@@ -143,11 +143,11 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         // Get all server options from the multi-link section
         val serverElements = document.select(".muti_link li")
-        
+
         serverElements.forEach { server ->
             val serverName = server.selectFirst("span")?.text() ?: server.ownText()
             val videoUrl = server.attr("data-video")
-            
+
             if (videoUrl.isNotBlank()) {
                 // Create video with server name as quality indicator
                 videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
@@ -212,7 +212,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     video.quality.contains("360") -> 1
                     else -> 0
                 }
-            },
+            }
         )
     }
 
