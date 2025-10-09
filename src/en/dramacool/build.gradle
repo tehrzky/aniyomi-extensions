@@ -5,3 +5,11 @@ ext {
 }
 
 apply from: "$rootDir/common.gradle"
+
+android {
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
