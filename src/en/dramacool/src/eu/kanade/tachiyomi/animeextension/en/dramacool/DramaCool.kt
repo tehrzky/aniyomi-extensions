@@ -124,7 +124,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             // Extract episode number from the element
             val epSpan = element.selectFirst("span.ep")
             val epText = epSpan?.text() ?: ""
-            
+
             // Try to get episode number from span text
             val epNum = when {
                 epText.contains(Regex("""EP\s*(\d+)""")) -> {
@@ -137,10 +137,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
 
             val type = element.selectFirst("span.type")?.text() ?: "RAW"
-            
+
             // Use extracted episode number or fallback to index + 1
             val finalEpNum = epNum ?: (index + 1).toString()
-            
+
             name = "$type: Episode $finalEpNum"
             episode_number = finalEpNum.toFloatOrNull() ?: (index + 1).toFloat()
             date_upload = element.selectFirst("span.time")?.text().orEmpty().toDate()
@@ -157,13 +157,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         // Get all server options
         val servers = document.select("ul.list-server-items li, .server-list li, .server-item")
-        
+
         if (servers.isNotEmpty()) {
             // Extract video URLs from server options
             return servers.flatMap { server ->
                 val serverName = server.text().trim()
                 val videoUrl = server.attr("data-video")
-                
+
                 if (videoUrl.isNotBlank()) {
                     // Create video with server name as quality indicator
                     listOf(Video(videoUrl, "$serverName - Direct", videoUrl))
@@ -218,15 +218,17 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================= Utilities ==============================
     override fun List<Video>.sort(): List<Video> {
         // Sort by quality preference
-        return sortedWith(compareByDescending { video ->
-            when {
-                video.quality.contains("1080") -> 4
-                video.quality.contains("720") -> 3
-                video.quality.contains("480") -> 2
-                video.quality.contains("360") -> 1
-                else -> 0
-            }
-        })
+        return sortedWith(
+            compareByDescending { video ->
+                when {
+                    video.quality.contains("1080") -> 4
+                    video.quality.contains("720") -> 3
+                    video.quality.contains("480") -> 2
+                    video.quality.contains("360") -> 1
+                    else -> 0
+                }
+            },
+        )
     }
 
     private fun parseStatus(statusString: String?): Int {
