@@ -12,6 +12,8 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.Headers
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -20,6 +22,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -35,6 +38,15 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
+
+    // Use a custom client with longer timeouts for video extraction
+    private val videoClient: OkHttpClient by lazy {
+        network.client.newBuilder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .build()
     }
 
     // ============================== Popular ===============================
@@ -146,23 +158,83 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         serverElements.forEach { server ->
             val serverName = server.selectFirst("span")?.text() ?: server.ownText()
-            val videoUrl = server.attr("data-video")
+            val embedUrl = server.attr("data-video")
 
-            if (videoUrl.isNotBlank()) {
-                // Create video with server name as quality indicator
-                videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
+            if (embedUrl.isNotBlank()) {
+                try {
+                    // Extract actual video URL from embed page
+                    val videoUrls = extractVideoFromEmbed(embedUrl, serverName)
+                    videos.addAll(videoUrls)
+                } catch (e: Exception) {
+                    // If extraction fails, fall back to the embed URL
+                    videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
+                }
             }
         }
 
-        // Fallback: try iframe
-        if (videos.isEmpty()) {
-            val iframeUrl = document.selectFirst("iframe")?.attr("src")
-            if (iframeUrl != null && iframeUrl.isNotBlank()) {
-                videos.add(Video(iframeUrl, "Direct Link", iframeUrl))
-            }
-        }
+        return videos.distinctBy { it.url }
+    }
 
+    private fun extractVideoFromEmbed(embedUrl: String, serverName: String): List<Video> {
+        val videos = mutableListOf<Video>()
+        
+        try {
+            val request = GET(embedUrl, Headers.headersOf("Referer", baseUrl))
+            val response = videoClient.newCall(request).execute()
+            val embedDoc = response.asJsoup()
+
+            // Try different methods to extract video URL
+            val videoUrl = extractVideoUrlFromDocument(embedDoc, embedUrl)
+            
+            if (videoUrl != null && videoUrl.isNotBlank()) {
+                videos.add(Video(videoUrl, "Direct: $serverName", videoUrl))
+            } else {
+                // Fallback: return the embed URL
+                videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
+            }
+            
+            response.close()
+        } catch (e: Exception) {
+            // If anything fails, return the embed URL
+            videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
+        }
+        
         return videos
+    }
+
+    private fun extractVideoUrlFromDocument(doc: Document, embedUrl: String): String? {
+        // Method 1: Look for video tags with src attribute
+        doc.select("video source").firstOrNull()?.attr("src")?.let { return it }
+        
+        // Method 2: Look for iframe with video sources
+        doc.select("iframe").firstOrNull()?.attr("src")?.let { src ->
+            if (src.contains(".mp4") || src.contains(".m3u8")) {
+                return src
+            }
+        }
+        
+        // Method 3: Look for script tags containing video URLs
+        val scripts = doc.select("script")
+        for (script in scripts) {
+            val scriptContent = script.html()
+            
+            // Look for MP4 files
+            val mp4Regex = Regex("""(https?://[^"'\s]*\.mp4[^"'\s]*)""")
+            mp4Regex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
+            
+            // Look for M3U8 files
+            val m3u8Regex = Regex("""(https?://[^"'\s]*\.m3u8[^"'\s]*)""")
+            m3u8Regex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
+            
+            // Look for common video URL patterns
+            val videoRegex = Regex("""(https?://[^"'\s]*(?:video|stream|file)[^"'\s]*)""")
+            videoRegex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
+        }
+        
+        // Method 4: Look for data-video attributes
+        doc.select("[data-video]").firstOrNull()?.attr("data-video")?.let { return it }
+        
+        return null
     }
 
     override fun videoListSelector(): String = ".muti_link li"
