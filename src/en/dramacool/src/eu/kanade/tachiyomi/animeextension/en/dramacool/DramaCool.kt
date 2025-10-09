@@ -42,7 +42,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/drama-list?page=$page")
     }
 
-    override fun popularAnimeSelector(): String = "div.item, div.movie-item, a.video-block"
+    override fun popularAnimeSelector(): String = "div.item, div.list-item, div.movie-item, a.block"
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
@@ -93,7 +93,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
             // Try multiple selectors for title and thumbnail
-            document.selectFirst("div.img img, img.poster, .poster img")?.run {
+            document.selectFirst("div.img img, img.poster, .poster img, .thumbnail img")?.run {
                 thumbnail_url = absUrl("src").takeIf { it.isNotBlank() }
                     ?: absUrl("data-src").takeIf { it.isNotBlank() }
                     ?: attr("data-original").takeIf { it.isNotBlank() }
@@ -102,24 +102,24 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             // Alternative title selectors
             if (title.isNullOrBlank()) {
-                title = document.selectFirst("h1, h2.title, .detail h2")?.text()
+                title = document.selectFirst("h1, h2.title, .detail h2, .title h1")?.text()
                     ?: "Unknown Title"
             }
 
             // Try multiple info sections
-            val infoElement = document.selectFirst("div.info, .details, .movie-detail")
+            val infoElement = document.selectFirst("div.info, .details, .movie-detail, .drama-detail")
             infoElement?.let { info ->
-                description = info.select("p:contains(Description), p:contains(Plot), .desc")
+                description = info.select("p:contains(Description), p:contains(Plot), .desc, .description, .content")
                     .firstOrNull()?.text()?.trim()
 
-                author = info.select("p:contains(Network), p:contains(Studio)")
+                author = info.select("p:contains(Network), p:contains(Studio), p:contains(Original Network)")
                     .firstOrNull()?.text()?.substringAfter(":")?.trim()
 
-                genre = info.select("p:contains(Genre), .genre a, .tags a")
+                genre = info.select("p:contains(Genre), .genre a, .tags a, .category a")
                     .joinToString { it.text().trim() }
                     .takeIf { it.isNotBlank() }
 
-                status = parseStatus(info.select("p:contains(Status)").text())
+                status = parseStatus(info.select("p:contains(Status), .status").text())
             }
 
             // Fallback description
@@ -130,14 +130,14 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.episodes li, ul.all-episode li, .episode-list li, .episode-item"
+    override fun episodeListSelector(): String = "ul.episodes li, ul.all-episode li, .episode-list li, .episode-item, li.episode"
 
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
             val link = element.selectFirst("a") ?: element
             setUrlWithoutDomain(link.attr("href"))
 
-            val titleElement = element.selectFirst("h3, .title, .episode-title, span.name")
+            val titleElement = element.selectFirst("h3, .title, .episode-title, span.name, .name")
             val epText = titleElement?.text() ?: ""
 
             // Extract episode number
@@ -146,13 +146,15 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.get(1)
                 epText.contains(Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE)) ->
                     Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.get(1)
+                epText.contains(Regex("""\d+""")) ->
+                    Regex("""\d+""").find(epText)?.value
                 else -> null
             }
 
-            val type = element.selectFirst("span.type, .quality")?.text() ?: "RAW"
+            val type = element.selectFirst("span.type, .quality, .sub")?.text() ?: "RAW"
             name = if (epNum != null) "$type: Episode $epNum" else type
             episode_number = epNum?.toFloatOrNull() ?: 1F
-            date_upload = element.selectFirst("span.time, .date")?.text().orEmpty().toDate()
+            date_upload = element.selectFirst("span.time, .date, .updated")?.text().orEmpty().toDate()
         }
     }
 
@@ -161,14 +163,14 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
 
         // Try multiple iframe selectors
-        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src")
+        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe, .player iframe")?.absUrl("src")
             ?: return emptyList()
 
         // For now, return a simple video - you'll need to enhance this
         return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
     }
 
-    override fun videoListSelector(): String = "ul.list-server-items li, .server-list li, .server-item"
+    override fun videoListSelector(): String = "ul.list-server-items li, .server-list li, .server-item, .server"
 
     override fun videoFromElement(element: Element): Video {
         throw UnsupportedOperationException()
