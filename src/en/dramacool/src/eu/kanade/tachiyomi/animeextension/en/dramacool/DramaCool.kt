@@ -91,13 +91,14 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             title = fullTitle.substringBefore("Episode").substringBefore("episode").trim()
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
             description = document.selectFirst("meta[name=description]")?.attr("content")
-            val infoElements = document.select("div.info p, .details p")
-            infoElements.forEach { p ->
+            
+            // Get details from info section
+            document.select(".info p, .details p").forEach { p ->
                 val text = p.text()
                 when {
-                    text.contains("Genre:") -> genre = p.select("a").joinToString { it.text() }
-                    text.contains("Status:") -> status = parseStatus(p.select("a").text())
-                    text.contains("Network:") -> author = p.select("a").text()
+                    text.contains("Genre:", ignoreCase = true) -> genre = p.select("a").joinToString { it.text() }
+                    text.contains("Status:", ignoreCase = true) -> status = parseStatus(p.select("a, span").last()?.text())
+                    text.contains("Network:", ignoreCase = true) -> author = p.select("a").text()
                 }
             }
         }
@@ -111,10 +112,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             setUrlWithoutDomain(element.attr("href"))
             val titleElement = element.selectFirst("h3.title")
             val titleText = titleElement?.text() ?: ""
+            
+            // Extract episode number from title
             val episodeNum = Regex("""Episode\s*(\d+)""").find(titleText)?.groupValues?.get(1)
                 ?: Regex("""EP?\s*(\d+)""").find(titleText)?.groupValues?.get(1)
                 ?: Regex("""\b(\d+)\b""").find(titleText)?.groupValues?.get(1)
                 ?: "1"
+
             val type = element.selectFirst("span.type")?.text() ?: "SUB"
             name = "$type: Episode $episodeNum"
             episode_number = episodeNum.toFloatOrNull() ?: 1F
@@ -127,34 +131,50 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
 
-        // Get all server options from the multi-link section
-        val serverElements = document.select(".muti_link li")
+        // Method 1: Try to extract from iframe first (most reliable)
+        val iframe = document.selectFirst("iframe")
+        iframe?.attr("src")?.let { iframeSrc ->
+            if (iframeSrc.isNotBlank()) {
+                // Check if it's a direct video file
+                if (iframeSrc.contains(".mp4") || iframeSrc.contains(".m3u8")) {
+                    videos.add(Video(iframeSrc, "Direct Video", iframeSrc))
+                } else {
+                    // It's an embed URL, we'll need to handle it
+                    videos.add(Video(iframeSrc, "Embed Link", iframeSrc))
+                }
+            }
+        }
 
+        // Method 2: Try server links
+        val serverElements = document.select(".muti_link li")
         serverElements.forEach { server ->
-            val serverName = server.selectFirst("span")?.text() ?: server.ownText()
+            val serverName = server.ownText().trim()
             val videoUrl = server.attr("data-video")
             if (videoUrl.isNotBlank()) {
                 videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
             }
         }
 
-        // Fallback: try iframe
-        if (videos.isEmpty()) {
-            val iframeUrl = document.selectFirst("iframe")?.attr("src")
-            if (iframeUrl != null && iframeUrl.isNotBlank()) {
-                videos.add(Video(iframeUrl, "Direct Link", iframeUrl))
+        // Method 3: Look for direct video links in scripts
+        document.select("script").forEach { script ->
+            val scriptContent = script.html()
+            // Look for MP4 files
+            Regex("""(https?://[^"'\s]*\.mp4[^"'\s]*)""").findAll(scriptContent).forEach { match ->
+                videos.add(Video(match.value, "MP4 Direct", match.value))
+            }
+            // Look for M3U8 files
+            Regex("""(https?://[^"'\s]*\.m3u8[^"'\s]*)""").findAll(scriptContent).forEach { match ->
+                videos.add(Video(match.value, "M3U8 Stream", match.value))
             }
         }
 
-        return videos
+        return videos.distinctBy { it.url }
     }
 
-    override fun videoListSelector(): String = ".muti_link li"
+    override fun videoListSelector(): String = "throw UnsupportedOperationException()"
 
     override fun videoFromElement(element: Element): Video {
-        val serverName = element.selectFirst("span")?.text() ?: element.ownText()
-        val videoUrl = element.attr("data-video")
-        return Video(videoUrl, "Server: $serverName", videoUrl)
+        throw UnsupportedOperationException()
     }
 
     override fun videoUrlParse(document: Document): String {
