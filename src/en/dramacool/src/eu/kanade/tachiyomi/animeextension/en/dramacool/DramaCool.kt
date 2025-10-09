@@ -90,7 +90,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             val fullTitle = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
             title = fullTitle.substringBefore("Episode").substringBefore("episode").trim()
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
-            description = document.selectFirst("meta[name=description]")?.attr("content")
+
+            // Clean up description - remove the "Asianc - Dramacool:" prefix
+            val rawDescription = document.selectFirst("meta[name=description]")?.attr("content") ?: ""
+            description = rawDescription.substringAfter(":").trim()
 
             // Get details from info section
             document.select(".info p, .details p").forEach { p ->
@@ -131,112 +134,22 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
 
-        // Method 1: Extract from server data attributes
-        document.select(".muti_link li, .server-list li, ul.list-server-items li").forEach { server ->
-            val serverName = server.selectFirst("a")?.text()?.trim()
-                ?: server.ownText().trim().takeIf { it.isNotBlank() }
-                ?: "Server"
+        // Get all server options from the multi-link section
+        val serverElements = document.select(".muti_link li")
 
-            // Try data-video attribute
-            var videoUrl = server.attr("data-video")
-
-            // Try data-link attribute
-            if (videoUrl.isBlank()) {
-                videoUrl = server.attr("data-link")
-            }
-
-            // Try getting from child anchor
-            if (videoUrl.isBlank()) {
-                videoUrl = server.selectFirst("a")?.attr("data-video") ?: ""
-            }
-
-            if (videoUrl.isBlank()) {
-                videoUrl = server.selectFirst("a")?.attr("data-link") ?: ""
-            }
+        serverElements.forEach { server ->
+            val serverName = server.ownText().trim()
+            val videoUrl = server.attr("data-video")
 
             if (videoUrl.isNotBlank()) {
-                // If it's a relative URL, make it absolute
-                val fullUrl = if (videoUrl.startsWith("http")) {
-                    videoUrl
-                } else if (videoUrl.startsWith("//")) {
-                    "https:$videoUrl"
-                } else if (videoUrl.startsWith("/")) {
-                    "$baseUrl$videoUrl"
-                } else {
-                    videoUrl
-                }
-
-                videos.add(Video(fullUrl, serverName, fullUrl))
+                videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
             }
         }
 
-        // Method 2: Extract from iframe sources
-        document.select("iframe[src], iframe[data-src]").forEach { iframe ->
-            val iframeSrc = iframe.attr("src").ifBlank { iframe.attr("data-src") }
-            if (iframeSrc.isNotBlank()) {
-                val fullUrl = when {
-                    iframeSrc.startsWith("http") -> iframeSrc
-                    iframeSrc.startsWith("//") -> "https:$iframeSrc"
-                    iframeSrc.startsWith("/") -> "$baseUrl$iframeSrc"
-                    else -> iframeSrc
-                }
-                videos.add(Video(fullUrl, "Iframe Player", fullUrl))
-            }
-        }
-
-        // Method 3: Extract from JavaScript variables
-        document.select("script:not([src])").forEach { script ->
-            val scriptContent = script.html()
-
-            // Look for common video URL patterns in JS
-            listOf(
-                Regex("""['"]?(https?://[^'">\s]*\.m3u8[^'">\s]*)['"]?"""),
-                Regex("""['"]?(https?://[^'">\s]*\.mp4[^'">\s]*)['"]?"""),
-                Regex("""source[s]?\s*[:=]\s*['"]([^'"]+)['"]"""),
-                Regex("""file\s*[:=]\s*['"]([^'"]+)['"]"""),
-                Regex("""video_url\s*[:=]\s*['"]([^'"]+)['"]"""),
-                Regex("""stream\s*[:=]\s*['"]([^'"]+)['"]"""),
-            ).forEach { regex ->
-                regex.findAll(scriptContent).forEach { match ->
-                    val url = match.groupValues.getOrNull(1) ?: match.value
-                    val cleanUrl = url.trim('"', '\'', ' ')
-
-                    if (cleanUrl.startsWith("http") && (cleanUrl.contains(".m3u8") || cleanUrl.contains(".mp4"))) {
-                        val quality = when {
-                            cleanUrl.contains("1080") -> "1080p"
-                            cleanUrl.contains("720") -> "720p"
-                            cleanUrl.contains("480") -> "480p"
-                            cleanUrl.contains("360") -> "360p"
-                            cleanUrl.contains(".m3u8") -> "HLS"
-                            else -> "Direct"
-                        }
-                        videos.add(Video(cleanUrl, quality, cleanUrl))
-                    }
-                }
-            }
-        }
-
-        // Method 4: Look for embed URLs that need to be fetched
-        document.select("div[data-type], .player-container[data-src]").forEach { container ->
-            val embedUrl = container.attr("data-src").ifBlank { container.attr("data-type") }
-            if (embedUrl.isNotBlank() && embedUrl.startsWith("http")) {
-                videos.add(Video(embedUrl, "Embed Link", embedUrl))
-            }
-        }
-
-        return videos.distinctBy { it.url }.ifEmpty {
-            // If no videos found, return iframe as fallback
-            document.selectFirst("iframe")?.attr("src")?.let { src ->
-                if (src.isNotBlank()) {
-                    listOf(Video(src, "Default Player", src))
-                } else {
-                    emptyList()
-                }
-            } ?: emptyList()
-        }
+        return videos
     }
 
-    override fun videoListSelector(): String = throw UnsupportedOperationException()
+    override fun videoListSelector(): String = "throw UnsupportedOperationException()"
 
     override fun videoFromElement(element: Element): Video {
         throw UnsupportedOperationException()
@@ -274,11 +187,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return sortedWith(
             compareByDescending { video ->
                 when {
-                    video.quality.contains("1080") -> 5
-                    video.quality.contains("720") -> 4
-                    video.quality.contains("480") -> 3
-                    video.quality.contains("360") -> 2
-                    video.quality.contains("HLS") || video.quality.contains("m3u8") -> 1
+                    video.quality.contains("1080") -> 4
+                    video.quality.contains("720") -> 3
+                    video.quality.contains("480") -> 2
+                    video.quality.contains("360") -> 1
                     else -> 0
                 }
             },
