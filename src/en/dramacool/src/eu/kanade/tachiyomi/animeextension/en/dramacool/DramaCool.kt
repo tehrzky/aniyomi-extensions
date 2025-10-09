@@ -12,8 +12,6 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.Headers
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -22,7 +20,6 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
@@ -38,15 +35,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private val preferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
-    }
-
-    // Use a custom client with longer timeouts for video extraction
-    private val videoClient: OkHttpClient by lazy {
-        network.client.newBuilder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
     }
 
     // ============================== Popular ===============================
@@ -76,7 +64,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             setUrlWithoutDomain(element.attr("href"))
             thumbnail_url = element.selectFirst("img")?.attr("data-original")
-            // Extract only the drama title without episode info
             val fullTitle = element.selectFirst("h3.title")?.text() ?: "Unknown Title"
             title = fullTitle.substringBefore("Episode").trim()
         }
@@ -100,17 +87,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            // Get title from the page - extract only drama title
             val fullTitle = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
             title = fullTitle.substringBefore("Episode").substringBefore("episode").trim()
-
-            // Get thumbnail
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
-
-            // Get description from meta tag
             description = document.selectFirst("meta[name=description]")?.attr("content")
-
-            // Try to get genre and other details
             val infoElements = document.select("div.info p, .details p")
             infoElements.forEach { p ->
                 val text = p.text()
@@ -129,19 +109,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
             setUrlWithoutDomain(element.attr("href"))
-
-            // Extract episode number from the title
             val titleElement = element.selectFirst("h3.title")
             val titleText = titleElement?.text() ?: ""
-
-            // Extract episode number using regex
             val episodeNum = Regex("""Episode\s*(\d+)""").find(titleText)?.groupValues?.get(1)
                 ?: Regex("""EP?\s*(\d+)""").find(titleText)?.groupValues?.get(1)
                 ?: Regex("""\b(\d+)\b""").find(titleText)?.groupValues?.get(1)
                 ?: "1"
-
             val type = element.selectFirst("span.type")?.text() ?: "SUB"
-
             name = "$type: Episode $episodeNum"
             episode_number = episodeNum.toFloatOrNull() ?: 1F
             date_upload = element.selectFirst("span.time")?.text().orEmpty().toDate()
@@ -158,83 +132,21 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         serverElements.forEach { server ->
             val serverName = server.selectFirst("span")?.text() ?: server.ownText()
-            val embedUrl = server.attr("data-video")
-
-            if (embedUrl.isNotBlank()) {
-                try {
-                    // Extract actual video URL from embed page
-                    val videoUrls = extractVideoFromEmbed(embedUrl, serverName)
-                    videos.addAll(videoUrls)
-                } catch (e: Exception) {
-                    // If extraction fails, fall back to the embed URL
-                    videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
-                }
+            val videoUrl = server.attr("data-video")
+            if (videoUrl.isNotBlank()) {
+                videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
             }
         }
 
-        return videos.distinctBy { it.url }
-    }
-
-    private fun extractVideoFromEmbed(embedUrl: String, serverName: String): List<Video> {
-        val videos = mutableListOf<Video>()
-
-        try {
-            val request = GET(embedUrl, Headers.headersOf("Referer", baseUrl))
-            val response = videoClient.newCall(request).execute()
-            val embedDoc = response.asJsoup()
-
-            // Try different methods to extract video URL
-            val videoUrl = extractVideoUrlFromDocument(embedDoc, embedUrl)
-
-            if (videoUrl != null && videoUrl.isNotBlank()) {
-                videos.add(Video(videoUrl, "Direct: $serverName", videoUrl))
-            } else {
-                // Fallback: return the embed URL
-                videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
+        // Fallback: try iframe
+        if (videos.isEmpty()) {
+            val iframeUrl = document.selectFirst("iframe")?.attr("src")
+            if (iframeUrl != null && iframeUrl.isNotBlank()) {
+                videos.add(Video(iframeUrl, "Direct Link", iframeUrl))
             }
-
-            response.close()
-        } catch (e: Exception) {
-            // If anything fails, return the embed URL
-            videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
         }
 
         return videos
-    }
-
-    private fun extractVideoUrlFromDocument(doc: Document, embedUrl: String): String? {
-        // Method 1: Look for video tags with src attribute
-        doc.select("video source").firstOrNull()?.attr("src")?.let { return it }
-
-        // Method 2: Look for iframe with video sources
-        doc.select("iframe").firstOrNull()?.attr("src")?.let { src ->
-            if (src.contains(".mp4") || src.contains(".m3u8")) {
-                return src
-            }
-        }
-
-        // Method 3: Look for script tags containing video URLs
-        val scripts = doc.select("script")
-        for (script in scripts) {
-            val scriptContent = script.html()
-
-            // Look for MP4 files
-            val mp4Regex = Regex("""(https?://[^"'\s]*\.mp4[^"'\s]*)""")
-            mp4Regex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
-
-            // Look for M3U8 files
-            val m3u8Regex = Regex("""(https?://[^"'\s]*\.m3u8[^"'\s]*)""")
-            m3u8Regex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
-
-            // Look for common video URL patterns
-            val videoRegex = Regex("""(https?://[^"'\s]*(?:video|stream|file)[^"'\s]*)""")
-            videoRegex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
-        }
-
-        // Method 4: Look for data-video attributes
-        doc.select("[data-video]").firstOrNull()?.attr("data-video")?.let { return it }
-
-        return null
     }
 
     override fun videoListSelector(): String = ".muti_link li"
@@ -274,7 +186,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================= Utilities ==============================
     override fun List<Video>.sort(): List<Video> {
-        // Sort by quality preference
         return sortedWith(
             compareByDescending { video ->
                 when {
