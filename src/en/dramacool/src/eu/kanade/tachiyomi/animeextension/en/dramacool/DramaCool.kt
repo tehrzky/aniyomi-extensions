@@ -88,13 +88,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             // Get title from the page
             title = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
-            
+
             // Get thumbnail
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
-            
+
             // Get description from meta tag
             description = document.selectFirst("meta[name=description]")?.attr("content")
-            
+
             // Try to get genre and other details
             val infoElements = document.select("div.info p, .details p")
             infoElements.forEach { p ->
@@ -114,10 +114,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
             setUrlWithoutDomain(element.attr("href"))
-            
+
             val epText = element.selectFirst("h3, .title")?.text() ?: ""
             val epNum = element.selectFirst("span.ep")?.text()?.substringAfter("EP ") ?: "1"
-            
+
             val type = element.selectFirst("span.type")?.text() ?: "RAW"
             name = "$type: Episode $epNum"
             episode_number = epNum.toFloatOrNull() ?: 1F
@@ -128,7 +128,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        
+
         // Try multiple iframe selectors
         val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src")
             ?: return emptyList()
