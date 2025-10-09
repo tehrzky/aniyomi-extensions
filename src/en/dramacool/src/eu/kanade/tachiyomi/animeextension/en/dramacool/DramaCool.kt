@@ -39,7 +39,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================== Popular ===============================
     override fun popularAnimeRequest(page: Int): Request {
-        return GET("$baseUrl/most-popular-drama?page=$page")
+        return GET("$baseUrl/most-popular-drama")
     }
 
     override fun popularAnimeSelector(): String = ".list-popular li a"
@@ -47,18 +47,18 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
             setUrlWithoutDomain(element.attr("href"))
-            title = element.text()
+            title = element.attr("title").takeIf { it.isNotBlank() } ?: element.text()
         }
     }
 
-    override fun popularAnimeNextPageSelector(): String? = "a.next, .pagination a:contains(Next)"
+    override fun popularAnimeNextPageSelector(): String? = null
 
     // =============================== Latest ===============================
     override fun latestUpdatesRequest(page: Int): Request {
-        return GET("$baseUrl/recently-added?page=$page")
+        return GET("$baseUrl/recently-added")
     }
 
-    override fun latestUpdatesSelector(): String = ".list-episode-item li a"
+    override fun latestUpdatesSelector(): String = ".switch-block.list-episode-item li a.img"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
         return SAnime.create().apply {
@@ -68,20 +68,20 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    override fun latestUpdatesNextPageSelector(): String? = "a.next, .pagination a:contains(Next)"
+    override fun latestUpdatesNextPageSelector(): String? = null
 
     // =============================== Search ===============================
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        return GET("$baseUrl/search?keyword=${query.encodeURL()}&page=$page")
+        return GET("$baseUrl/search?keyword=${query.encodeURL()}")
     }
 
-    override fun searchAnimeSelector(): String = ".list-episode-item li a"
+    override fun searchAnimeSelector(): String = ".switch-block.list-episode-item li a.img"
 
     override fun searchAnimeFromElement(element: Element): SAnime {
         return latestUpdatesFromElement(element)
     }
 
-    override fun searchAnimeNextPageSelector(): String? = latestUpdatesNextPageSelector()
+    override fun searchAnimeNextPageSelector(): String? = null
 
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
