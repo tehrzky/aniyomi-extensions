@@ -109,15 +109,9 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListParse(document: Document): List<SEpisode> {
-        return document.select(episodeListSelector()).mapIndexed { index, element ->
-            episodeFromElement(element, index)
-        }
-    }
-
     override fun episodeListSelector(): String = "ul.all-episode li a, .episode-list li a"
 
-    private fun episodeFromElement(element: Element, index: Int): SEpisode {
+    override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
             setUrlWithoutDomain(element.attr("href"))
 
@@ -138,17 +132,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             val type = element.selectFirst("span.type")?.text() ?: "RAW"
 
-            // Use extracted episode number or fallback to index + 1
-            val finalEpNum = epNum ?: (index + 1).toString()
+            // Use extracted episode number or fallback to a default
+            val finalEpNum = epNum ?: "1"
 
             name = "$type: Episode $finalEpNum"
-            episode_number = finalEpNum.toFloatOrNull() ?: (index + 1).toFloat()
+            episode_number = finalEpNum.toFloatOrNull() ?: 1F
             date_upload = element.selectFirst("span.time")?.text().orEmpty().toDate()
         }
-    }
-
-    override fun episodeFromElement(element: Element): SEpisode {
-        return episodeFromElement(element, 0)
     }
 
     // ============================ Video Links =============================
