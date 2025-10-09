@@ -58,7 +58,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/recently-added")
     }
 
-    override fun latestUpdatesSelector(): String = ".switch-block.list-episode-item li a.img"
+    override fun latestUpdatesSelector(): String = ".list-episode-item li a"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
         return SAnime.create().apply {
@@ -75,7 +75,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/search?keyword=${query.encodeURL()}")
     }
 
-    override fun searchAnimeSelector(): String = ".switch-block.list-episode-item li a.img"
+    override fun searchAnimeSelector(): String = ".list-episode-item li a"
 
     override fun searchAnimeFromElement(element: Element): SAnime {
         return latestUpdatesFromElement(element)
