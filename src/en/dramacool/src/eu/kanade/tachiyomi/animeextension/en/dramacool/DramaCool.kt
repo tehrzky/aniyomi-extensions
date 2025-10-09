@@ -177,7 +177,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun extractVideoFromEmbed(embedUrl: String, serverName: String): List<Video> {
         val videos = mutableListOf<Video>()
-        
+
         try {
             val request = GET(embedUrl, Headers.headersOf("Referer", baseUrl))
             val response = videoClient.newCall(request).execute()
@@ -185,55 +185,55 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             // Try different methods to extract video URL
             val videoUrl = extractVideoUrlFromDocument(embedDoc, embedUrl)
-            
+
             if (videoUrl != null && videoUrl.isNotBlank()) {
                 videos.add(Video(videoUrl, "Direct: $serverName", videoUrl))
             } else {
                 // Fallback: return the embed URL
                 videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
             }
-            
+
             response.close()
         } catch (e: Exception) {
             // If anything fails, return the embed URL
             videos.add(Video(embedUrl, "Embed: $serverName", embedUrl))
         }
-        
+
         return videos
     }
 
     private fun extractVideoUrlFromDocument(doc: Document, embedUrl: String): String? {
         // Method 1: Look for video tags with src attribute
         doc.select("video source").firstOrNull()?.attr("src")?.let { return it }
-        
+
         // Method 2: Look for iframe with video sources
         doc.select("iframe").firstOrNull()?.attr("src")?.let { src ->
             if (src.contains(".mp4") || src.contains(".m3u8")) {
                 return src
             }
         }
-        
+
         // Method 3: Look for script tags containing video URLs
         val scripts = doc.select("script")
         for (script in scripts) {
             val scriptContent = script.html()
-            
+
             // Look for MP4 files
             val mp4Regex = Regex("""(https?://[^"'\s]*\.mp4[^"'\s]*)""")
             mp4Regex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
-            
+
             // Look for M3U8 files
             val m3u8Regex = Regex("""(https?://[^"'\s]*\.m3u8[^"'\s]*)""")
             m3u8Regex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
-            
+
             // Look for common video URL patterns
             val videoRegex = Regex("""(https?://[^"'\s]*(?:video|stream|file)[^"'\s]*)""")
             videoRegex.find(scriptContent)?.groupValues?.get(1)?.let { return it }
         }
-        
+
         // Method 4: Look for data-video attributes
         doc.select("[data-video]").firstOrNull()?.attr("data-video")?.let { return it }
-        
+
         return null
     }
 
