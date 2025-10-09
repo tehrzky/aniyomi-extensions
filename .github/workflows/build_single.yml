@@ -1,18 +1,11 @@
 name: Build Single Extension
 
 on:
-  # Manual trigger
   workflow_dispatch:
-    inputs:
-      extension:
-        description: 'Extension to build (e.g., src:en:dramacool)'
-        required: true
-        default: 'src:en:dramacool'
-        type: string
 
 jobs:
   build:
-    name: Build ${{ github.event.inputs.extension }}
+    name: Build DramaCool
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -30,13 +23,22 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         
-      - name: Build extension
+      - name: Build DramaCool extension
         run: |
-          ./gradlew ${{ github.event.inputs.extension }}:assembleRelease
+          ./gradlew src:en:dramacool:assembleRelease
           
-      - name: Upload APK
+      - name: Find and upload APK directly
+        run: |
+          # Find the APK file
+          APK_FILE=$(find . -name "*.apk" -type f | head -1)
+          echo "Found APK: $APK_FILE"
+          
+          # Create a simple filename
+          cp "$APK_FILE" "dramacool-extension.apk"
+          
+      - name: Upload APK directly
         uses: actions/upload-artifact@v4
         with:
-          name: dramacool-apk
-          path: "**/build/outputs/apk/release/*.apk"
+          name: dramacool-extension
+          path: dramacool-extension.apk
           retention-days: 7
