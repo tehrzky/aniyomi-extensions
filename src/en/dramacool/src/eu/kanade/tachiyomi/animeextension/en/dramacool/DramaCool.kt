@@ -120,7 +120,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val iframeUrl = document.selectFirst("iframe")?.absUrl("src") ?: return emptyList()
-        
+
         // Simple video extraction - you can enhance this later
         return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
     }
