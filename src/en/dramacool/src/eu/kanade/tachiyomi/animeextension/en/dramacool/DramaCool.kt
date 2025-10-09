@@ -12,6 +12,7 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -131,44 +132,31 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
 
-        // Method 1: Try to extract from iframe first (most reliable)
-        val iframe = document.selectFirst("iframe")
-        iframe?.attr("src")?.let { iframeSrc ->
-            if (iframeSrc.isNotBlank()) {
-                // Check if it's a direct video file
-                if (iframeSrc.contains(".mp4") || iframeSrc.contains(".m3u8")) {
-                    videos.add(Video(iframeSrc, "Direct Video", iframeSrc))
-                } else {
-                    // It's an embed URL, we'll need to handle it
-                    videos.add(Video(iframeSrc, "Embed Link", iframeSrc))
+        // Get all server options
+        val serverElements = document.select(".muti_link li")
+        
+        serverElements.forEach { server ->
+            val serverName = server.ownText().trim()
+            val embedUrl = server.attr("data-video")
+            
+            if (embedUrl.isNotBlank()) {
+                // Add the embed URL as a video option
+                // Users can try different servers to see which ones work
+                videos.add(Video(embedUrl, "Server: $serverName", embedUrl))
+            }
+        }
+
+        // If no servers found, try iframe as fallback
+        if (videos.isEmpty()) {
+            val iframe = document.selectFirst("iframe")
+            iframe?.attr("src")?.let { iframeSrc ->
+                if (iframeSrc.isNotBlank()) {
+                    videos.add(Video(iframeSrc, "Iframe Source", iframeSrc))
                 }
             }
         }
 
-        // Method 2: Try server links
-        val serverElements = document.select(".muti_link li")
-        serverElements.forEach { server ->
-            val serverName = server.ownText().trim()
-            val videoUrl = server.attr("data-video")
-            if (videoUrl.isNotBlank()) {
-                videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
-            }
-        }
-
-        // Method 3: Look for direct video links in scripts
-        document.select("script").forEach { script ->
-            val scriptContent = script.html()
-            // Look for MP4 files
-            Regex("""(https?://[^"'\s]*\.mp4[^"'\s]*)""").findAll(scriptContent).forEach { match ->
-                videos.add(Video(match.value, "MP4 Direct", match.value))
-            }
-            // Look for M3U8 files
-            Regex("""(https?://[^"'\s]*\.m3u8[^"'\s]*)""").findAll(scriptContent).forEach { match ->
-                videos.add(Video(match.value, "M3U8 Stream", match.value))
-            }
-        }
-
-        return videos.distinctBy { it.url }
+        return videos
     }
 
     override fun videoListSelector(): String = "throw UnsupportedOperationException()"
