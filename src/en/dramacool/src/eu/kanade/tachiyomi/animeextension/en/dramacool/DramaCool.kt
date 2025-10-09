@@ -109,32 +109,77 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
+    override fun episodeListParse(document: Document): List<SEpisode> {
+        return document.select(episodeListSelector()).mapIndexed { index, element ->
+            episodeFromElement(element, index)
+        }
+    }
+
     override fun episodeListSelector(): String = "ul.all-episode li a, .episode-list li a"
 
-    override fun episodeFromElement(element: Element): SEpisode {
+    private fun episodeFromElement(element: Element, index: Int): SEpisode {
         return SEpisode.create().apply {
             setUrlWithoutDomain(element.attr("href"))
 
-            val epText = element.selectFirst("h3, .title")?.text() ?: ""
-            val epNum = element.selectFirst("span.ep")?.text()?.substringAfter("EP ") ?: "1"
+            // Extract episode number from the element
+            val epSpan = element.selectFirst("span.ep")
+            val epText = epSpan?.text() ?: ""
+            
+            // Try to get episode number from span text
+            val epNum = when {
+                epText.contains(Regex("""EP\s*(\d+)""")) -> {
+                    Regex("""EP\s*(\d+)""").find(epText)?.groupValues?.get(1)
+                }
+                epText.contains(Regex("""\d+""")) -> {
+                    Regex("""\d+""").find(epText)?.value
+                }
+                else -> null
+            }
 
             val type = element.selectFirst("span.type")?.text() ?: "RAW"
-            name = "$type: Episode $epNum"
-            episode_number = epNum.toFloatOrNull() ?: 1F
+            
+            // Use extracted episode number or fallback to index + 1
+            val finalEpNum = epNum ?: (index + 1).toString()
+            
+            name = "$type: Episode $finalEpNum"
+            episode_number = finalEpNum.toFloatOrNull() ?: (index + 1).toFloat()
             date_upload = element.selectFirst("span.time")?.text().orEmpty().toDate()
         }
+    }
+
+    override fun episodeFromElement(element: Element): SEpisode {
+        return episodeFromElement(element, 0)
     }
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
 
-        // Try multiple iframe selectors
-        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src")
-            ?: return emptyList()
+        // Get all server options
+        val servers = document.select("ul.list-server-items li, .server-list li, .server-item")
+        
+        if (servers.isNotEmpty()) {
+            // Extract video URLs from server options
+            return servers.flatMap { server ->
+                val serverName = server.text().trim()
+                val videoUrl = server.attr("data-video")
+                
+                if (videoUrl.isNotBlank()) {
+                    // Create video with server name as quality indicator
+                    listOf(Video(videoUrl, "$serverName - Direct", videoUrl))
+                } else {
+                    emptyList()
+                }
+            }
+        }
 
-        // For now, return a simple video - you'll need to enhance this
-        return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
+        // Fallback: try iframe
+        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src")
+        if (iframeUrl != null) {
+            return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
+        }
+
+        return emptyList()
     }
 
     override fun videoListSelector(): String = "ul.list-server-items li, .server-list li, .server-item"
@@ -172,7 +217,16 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================= Utilities ==============================
     override fun List<Video>.sort(): List<Video> {
-        return this // Simple sorting for now
+        // Sort by quality preference
+        return sortedWith(compareByDescending { video ->
+            when {
+                video.quality.contains("1080") -> 4
+                video.quality.contains("720") -> 3
+                video.quality.contains("480") -> 2
+                video.quality.contains("360") -> 1
+                else -> 0
+            }
+        })
     }
 
     private fun parseStatus(statusString: String?): Int {
