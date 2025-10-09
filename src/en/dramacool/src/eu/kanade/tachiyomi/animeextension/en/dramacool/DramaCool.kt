@@ -133,27 +133,27 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         // Method 1: Extract from server data attributes
         document.select(".muti_link li, .server-list li, ul.list-server-items li").forEach { server ->
-            val serverName = server.selectFirst("a")?.text()?.trim() 
+            val serverName = server.selectFirst("a")?.text()?.trim()
                 ?: server.ownText().trim().takeIf { it.isNotBlank() }
                 ?: "Server"
-            
+
             // Try data-video attribute
             var videoUrl = server.attr("data-video")
-            
+
             // Try data-link attribute
             if (videoUrl.isBlank()) {
                 videoUrl = server.attr("data-link")
             }
-            
+
             // Try getting from child anchor
             if (videoUrl.isBlank()) {
                 videoUrl = server.selectFirst("a")?.attr("data-video") ?: ""
             }
-            
+
             if (videoUrl.isBlank()) {
                 videoUrl = server.selectFirst("a")?.attr("data-link") ?: ""
             }
-            
+
             if (videoUrl.isNotBlank()) {
                 // If it's a relative URL, make it absolute
                 val fullUrl = if (videoUrl.startsWith("http")) {
@@ -165,7 +165,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 } else {
                     videoUrl
                 }
-                
+
                 videos.add(Video(fullUrl, serverName, fullUrl))
             }
         }
@@ -187,7 +187,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         // Method 3: Extract from JavaScript variables
         document.select("script:not([src])").forEach { script ->
             val scriptContent = script.html()
-            
+
             // Look for common video URL patterns in JS
             listOf(
                 Regex("""['"]?(https?://[^'">\s]*\.m3u8[^'">\s]*)['"]?"""),
@@ -195,12 +195,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 Regex("""source[s]?\s*[:=]\s*['"]([^'"]+)['"]"""),
                 Regex("""file\s*[:=]\s*['"]([^'"]+)['"]"""),
                 Regex("""video_url\s*[:=]\s*['"]([^'"]+)['"]"""),
-                Regex("""stream\s*[:=]\s*['"]([^'"]+)['"]""")
+                Regex("""stream\s*[:=]\s*['"]([^'"]+)['"]"""),
             ).forEach { regex ->
                 regex.findAll(scriptContent).forEach { match ->
                     val url = match.groupValues.getOrNull(1) ?: match.value
                     val cleanUrl = url.trim('"', '\'', ' ')
-                    
+
                     if (cleanUrl.startsWith("http") && (cleanUrl.contains(".m3u8") || cleanUrl.contains(".mp4"))) {
                         val quality = when {
                             cleanUrl.contains("1080") -> "1080p"
