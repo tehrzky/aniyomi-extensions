@@ -64,7 +64,9 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             setUrlWithoutDomain(element.attr("href"))
             thumbnail_url = element.selectFirst("img")?.attr("data-original")
-            title = element.selectFirst("h3.title")?.text() ?: "Unknown Title"
+            // Extract only the drama title without episode info
+            val fullTitle = element.selectFirst("h3.title")?.text() ?: "Unknown Title"
+            title = fullTitle.substringBefore("Episode").trim()
         }
     }
 
@@ -86,8 +88,9 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            // Get title from the page
-            title = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
+            // Get title from the page - extract only drama title
+            val fullTitle = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
+            title = fullTitle.substringBefore("Episode").substringBefore("episode").trim()
 
             // Get thumbnail
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
@@ -109,34 +112,26 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.all-episode li a, .episode-list li a"
+    override fun episodeListSelector(): String = "ul.list-episode-item-2.all-episode li a"
 
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
             setUrlWithoutDomain(element.attr("href"))
 
-            // Extract episode number from the element
-            val epSpan = element.selectFirst("span.ep")
-            val epText = epSpan?.text() ?: ""
+            // Extract episode number from the title
+            val titleElement = element.selectFirst("h3.title")
+            val titleText = titleElement?.text() ?: ""
+            
+            // Extract episode number using regex
+            val episodeNum = Regex("""Episode\s*(\d+)""").find(titleText)?.groupValues?.get(1)
+                ?: Regex("""EP?\s*(\d+)""").find(titleText)?.groupValues?.get(1)
+                ?: Regex("""\b(\d+)\b""").find(titleText)?.groupValues?.get(1)
+                ?: "1"
 
-            // Try to get episode number from span text
-            val epNum = when {
-                epText.contains(Regex("""EP\s*(\d+)""")) -> {
-                    Regex("""EP\s*(\d+)""").find(epText)?.groupValues?.get(1)
-                }
-                epText.contains(Regex("""\d+""")) -> {
-                    Regex("""\d+""").find(epText)?.value
-                }
-                else -> null
-            }
+            val type = element.selectFirst("span.type")?.text() ?: "SUB"
 
-            val type = element.selectFirst("span.type")?.text() ?: "RAW"
-
-            // Use extracted episode number or fallback to a default
-            val finalEpNum = epNum ?: "1"
-
-            name = "$type: Episode $finalEpNum"
-            episode_number = finalEpNum.toFloatOrNull() ?: 1F
+            name = "$type: Episode $episodeNum"
+            episode_number = episodeNum.toFloatOrNull() ?: 1F
             date_upload = element.selectFirst("span.time")?.text().orEmpty().toDate()
         }
     }
@@ -144,38 +139,38 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
+        val videos = mutableListOf<Video>()
 
-        // Get all server options
-        val servers = document.select("ul.list-server-items li, .server-list li, .server-item")
-
-        if (servers.isNotEmpty()) {
-            // Extract video URLs from server options
-            return servers.flatMap { server ->
-                val serverName = server.text().trim()
-                val videoUrl = server.attr("data-video")
-
-                if (videoUrl.isNotBlank()) {
-                    // Create video with server name as quality indicator
-                    listOf(Video(videoUrl, "$serverName - Direct", videoUrl))
-                } else {
-                    emptyList()
-                }
+        // Get all server options from the multi-link section
+        val serverElements = document.select(".muti_link li")
+        
+        serverElements.forEach { server ->
+            val serverName = server.selectFirst("span")?.text() ?: server.ownText()
+            val videoUrl = server.attr("data-video")
+            
+            if (videoUrl.isNotBlank()) {
+                // Create video with server name as quality indicator
+                videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
             }
         }
 
         // Fallback: try iframe
-        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src")
-        if (iframeUrl != null) {
-            return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
+        if (videos.isEmpty()) {
+            val iframeUrl = document.selectFirst("iframe")?.attr("src")
+            if (iframeUrl != null && iframeUrl.isNotBlank()) {
+                videos.add(Video(iframeUrl, "Direct Link", iframeUrl))
+            }
         }
 
-        return emptyList()
+        return videos
     }
 
-    override fun videoListSelector(): String = "ul.list-server-items li, .server-list li, .server-item"
+    override fun videoListSelector(): String = ".muti_link li"
 
     override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException()
+        val serverName = element.selectFirst("span")?.text() ?: element.ownText()
+        val videoUrl = element.attr("data-video")
+        return Video(videoUrl, "Server: $serverName", videoUrl)
     }
 
     override fun videoUrlParse(document: Document): String {
