@@ -91,7 +91,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             title = fullTitle.substringBefore("Episode").substringBefore("episode").trim()
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
             description = document.selectFirst("meta[name=description]")?.attr("content")
-            
+
             // Get details from info section
             document.select(".info p, .details p").forEach { p ->
                 val text = p.text()
@@ -112,7 +112,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             setUrlWithoutDomain(element.attr("href"))
             val titleElement = element.selectFirst("h3.title")
             val titleText = titleElement?.text() ?: ""
-            
+
             // Extract episode number from title
             val episodeNum = Regex("""Episode\s*(\d+)""").find(titleText)?.groupValues?.get(1)
                 ?: Regex("""EP?\s*(\d+)""").find(titleText)?.groupValues?.get(1)
