@@ -48,14 +48,14 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             val link = element.selectFirst("a") ?: element
             setUrlWithoutDomain(link.attr("href"))
-            
+
             thumbnail_url = element.selectFirst("img")?.let { img ->
-                img.attr("data-original").takeIf { it.isNotBlank() } 
+                img.attr("data-original").takeIf { it.isNotBlank() }
                     ?: img.attr("src").takeIf { it.isNotBlank() }
                     ?: img.attr("data-src").takeIf { it.isNotBlank() }
             }?.replace(" ", "%20")
-            
-            title = element.selectFirst("h3, h2, .title, .name")?.text() 
+
+            title = element.selectFirst("h3, h2, .title, .name")?.text()
                 ?: element.selectFirst("img")?.attr("alt")
                 ?: "Unknown Title"
         }
@@ -94,15 +94,15 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             // Try multiple selectors for title and thumbnail
             document.selectFirst("div.img img, img.poster, .poster img")?.run {
-                thumbnail_url = absUrl("src").takeIf { it.isNotBlank() } 
+                thumbnail_url = absUrl("src").takeIf { it.isNotBlank() }
                     ?: absUrl("data-src").takeIf { it.isNotBlank() }
                     ?: attr("data-original").takeIf { it.isNotBlank() }
                 title = attr("alt").takeIf { it.isNotBlank() }
             }
-            
+
             // Alternative title selectors
             if (title.isNullOrBlank()) {
-                title = document.selectFirst("h1, h2.title, .detail h2")?.text() 
+                title = document.selectFirst("h1, h2.title, .detail h2")?.text()
                     ?: "Unknown Title"
             }
 
@@ -111,17 +111,17 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             infoElement?.let { info ->
                 description = info.select("p:contains(Description), p:contains(Plot), .desc")
                     .firstOrNull()?.text()?.trim()
-                
+
                 author = info.select("p:contains(Network), p:contains(Studio)")
                     .firstOrNull()?.text()?.substringAfter(":")?.trim()
-                
+
                 genre = info.select("p:contains(Genre), .genre a, .tags a")
                     .joinToString { it.text().trim() }
                     .takeIf { it.isNotBlank() }
-                
+
                 status = parseStatus(info.select("p:contains(Status)").text())
             }
-            
+
             // Fallback description
             if (description.isNullOrBlank()) {
                 description = document.selectFirst("meta[name=description]")?.attr("content")
@@ -146,19 +146,19 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SEpisode.create().apply {
             val link = element.selectFirst("a") ?: element
             setUrlWithoutDomain(link.attr("href"))
-            
+
             val titleElement = element.selectFirst("h3, .title, .episode-title, span.name")
             val epText = titleElement?.text() ?: ""
-            
+
             // Extract episode number
             val epNum = when {
-                epText.contains(Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE)) -> 
+                epText.contains(Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE)) ->
                     Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.get(1)
-                epText.contains(Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE)) -> 
+                epText.contains(Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE)) ->
                     Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.get(1)
                 else -> null
             }
-            
+
             val type = element.selectFirst("span.type, .quality")?.text() ?: "RAW"
             name = if (epNum != null) "$type: Episode $epNum" else type
             episode_number = epNum?.toFloatOrNull() ?: 1F
@@ -169,11 +169,11 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        
+
         // Try multiple iframe selectors
-        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src") 
+        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src")
             ?: return emptyList()
-            
+
         // For now, return a simple video - you'll need to enhance this
         return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
     }
@@ -226,12 +226,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     private fun String.toDate(): Long {
-        return runCatching { 
-            DATE_FORMATTER.parse(trim())?.time 
+        return runCatching {
+            DATE_FORMATTER.parse(trim())?.time
         }.getOrNull() ?: 0L
     }
 
-    private fun String.encodeURL(): String = 
+    private fun String.encodeURL(): String =
         java.net.URLEncoder.encode(this, "UTF-8")
 
     companion object {
