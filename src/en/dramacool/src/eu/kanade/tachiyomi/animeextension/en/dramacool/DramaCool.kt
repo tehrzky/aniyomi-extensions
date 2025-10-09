@@ -39,138 +39,105 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================== Popular ===============================
     override fun popularAnimeRequest(page: Int): Request {
-        return GET("$baseUrl/drama-list?page=$page")
+        return GET("$baseUrl/most-popular-drama?page=$page")
     }
 
-    override fun popularAnimeSelector(): String = "div.item, div.list-item, div.movie-item, a.block"
+    override fun popularAnimeSelector(): String = "ul.list-popular li a, .list-popular li a"
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
-            val link = element.selectFirst("a") ?: element
-            setUrlWithoutDomain(link.attr("href"))
-
-            thumbnail_url = element.selectFirst("img")?.let { img ->
-                img.attr("data-original").takeIf { it.isNotBlank() }
-                    ?: img.attr("src").takeIf { it.isNotBlank() }
-                    ?: img.attr("data-src").takeIf { it.isNotBlank() }
-            }?.replace(" ", "%20")
-
-            title = element.selectFirst("h3, h2, .title, .name")?.text()
-                ?: element.selectFirst("img")?.attr("alt")
-                ?: "Unknown Title"
+            setUrlWithoutDomain(element.attr("href"))
+            title = element.text()
         }
     }
 
-    override fun popularAnimeNextPageSelector(): String? = "a.next, li.next a, .pagination a:contains(Next)"
+    override fun popularAnimeNextPageSelector(): String? = "a.next, .pagination a:contains(Next)"
 
     // =============================== Latest ===============================
     override fun latestUpdatesRequest(page: Int): Request {
         return GET("$baseUrl/recently-added?page=$page")
     }
 
-    override fun latestUpdatesSelector(): String = popularAnimeSelector()
+    override fun latestUpdatesSelector(): String = "ul.switch-block.list-episode-item li a"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
-        return popularAnimeFromElement(element)
+        return SAnime.create().apply {
+            setUrlWithoutDomain(element.attr("href"))
+            thumbnail_url = element.selectFirst("img")?.attr("data-original")
+            title = element.selectFirst("h3.title")?.text() ?: "Unknown Title"
+        }
     }
 
-    override fun latestUpdatesNextPageSelector(): String? = popularAnimeNextPageSelector()
+    override fun latestUpdatesNextPageSelector(): String? = "a.next, .pagination a:contains(Next)"
 
     // =============================== Search ===============================
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         return GET("$baseUrl/search?keyword=${query.encodeURL()}&page=$page")
     }
 
-    override fun searchAnimeSelector(): String = popularAnimeSelector()
+    override fun searchAnimeSelector(): String = "ul.switch-block.list-episode-item li a"
 
     override fun searchAnimeFromElement(element: Element): SAnime {
-        return popularAnimeFromElement(element)
+        return latestUpdatesFromElement(element)
     }
 
-    override fun searchAnimeNextPageSelector(): String? = popularAnimeNextPageSelector()
+    override fun searchAnimeNextPageSelector(): String? = latestUpdatesNextPageSelector()
 
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            // Try multiple selectors for title and thumbnail
-            document.selectFirst("div.img img, img.poster, .poster img, .thumbnail img")?.run {
-                thumbnail_url = absUrl("src").takeIf { it.isNotBlank() }
-                    ?: absUrl("data-src").takeIf { it.isNotBlank() }
-                    ?: attr("data-original").takeIf { it.isNotBlank() }
-                title = attr("alt").takeIf { it.isNotBlank() } ?: ""
-            }
-
-            // Alternative title selectors
-            if (title.isNullOrBlank()) {
-                title = document.selectFirst("h1, h2.title, .detail h2, .title h1")?.text()
-                    ?: "Unknown Title"
-            }
-
-            // Try multiple info sections
-            val infoElement = document.selectFirst("div.info, .details, .movie-detail, .drama-detail")
-            infoElement?.let { info ->
-                description = info.select("p:contains(Description), p:contains(Plot), .desc, .description, .content")
-                    .firstOrNull()?.text()?.trim()
-
-                author = info.select("p:contains(Network), p:contains(Studio), p:contains(Original Network)")
-                    .firstOrNull()?.text()?.substringAfter(":")?.trim()
-
-                genre = info.select("p:contains(Genre), .genre a, .tags a, .category a")
-                    .joinToString { it.text().trim() }
-                    .takeIf { it.isNotBlank() }
-
-                status = parseStatus(info.select("p:contains(Status), .status").text())
-            }
-
-            // Fallback description
-            if (description.isNullOrBlank()) {
-                description = document.selectFirst("meta[name=description]")?.attr("content")
+            // Get title from the page
+            title = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
+            
+            // Get thumbnail
+            thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
+            
+            // Get description from meta tag
+            description = document.selectFirst("meta[name=description]")?.attr("content")
+            
+            // Try to get genre and other details
+            val infoElements = document.select("div.info p, .details p")
+            infoElements.forEach { p ->
+                val text = p.text()
+                when {
+                    text.contains("Genre:") -> genre = p.select("a").joinToString { it.text() }
+                    text.contains("Status:") -> status = parseStatus(p.select("a").text())
+                    text.contains("Network:") -> author = p.select("a").text()
+                }
             }
         }
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.episodes li, ul.all-episode li, .episode-list li, .episode-item, li.episode"
+    override fun episodeListSelector(): String = "ul.all-episode li a, .episode-list li a"
 
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
-            val link = element.selectFirst("a") ?: element
-            setUrlWithoutDomain(link.attr("href"))
-
-            val titleElement = element.selectFirst("h3, .title, .episode-title, span.name, .name")
-            val epText = titleElement?.text() ?: ""
-
-            // Extract episode number
-            val epNum = when {
-                epText.contains(Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE)) ->
-                    Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.get(1)
-                epText.contains(Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE)) ->
-                    Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE).find(epText)?.groupValues?.get(1)
-                epText.contains(Regex("""\d+""")) ->
-                    Regex("""\d+""").find(epText)?.value
-                else -> null
-            }
-
-            val type = element.selectFirst("span.type, .quality, .sub")?.text() ?: "RAW"
-            name = if (epNum != null) "$type: Episode $epNum" else type
-            episode_number = epNum?.toFloatOrNull() ?: 1F
-            date_upload = element.selectFirst("span.time, .date, .updated")?.text().orEmpty().toDate()
+            setUrlWithoutDomain(element.attr("href"))
+            
+            val epText = element.selectFirst("h3, .title")?.text() ?: ""
+            val epNum = element.selectFirst("span.ep")?.text()?.substringAfter("EP ") ?: "1"
+            
+            val type = element.selectFirst("span.type")?.text() ?: "RAW"
+            name = "$type: Episode $epNum"
+            episode_number = epNum.toFloatOrNull() ?: 1F
+            date_upload = element.selectFirst("span.time")?.text().orEmpty().toDate()
         }
     }
 
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-
+        
         // Try multiple iframe selectors
-        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe, .player iframe")?.absUrl("src")
+        val iframeUrl = document.selectFirst("iframe, .video-frame, #player iframe")?.absUrl("src")
             ?: return emptyList()
 
         // For now, return a simple video - you'll need to enhance this
         return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
     }
 
-    override fun videoListSelector(): String = "ul.list-server-items li, .server-list li, .server-item, .server"
+    override fun videoListSelector(): String = "ul.list-server-items li, .server-list li, .server-item"
 
     override fun videoFromElement(element: Element): Video {
         throw UnsupportedOperationException()
