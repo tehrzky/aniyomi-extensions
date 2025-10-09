@@ -1,0 +1,42 @@
+name: Build Single Extension
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      extension:
+        description: 'Extension to build (e.g., src:en:dramacool)'
+        required: true
+        default: 'src:en:dramacool'
+        type: string
+
+jobs:
+  build:
+    name: Build ${{ github.event.inputs.extension }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+          
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        
+      - name: Build extension
+        run: |
+          ./gradlew ${{ github.event.inputs.extension }}:assembleRelease
+          
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.extension }}-apk
+          path: "**/build/outputs/apk/release/*.apk"
+          retention-days: 7
