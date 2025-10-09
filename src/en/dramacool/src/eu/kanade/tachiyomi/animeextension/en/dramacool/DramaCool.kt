@@ -97,7 +97,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 thumbnail_url = absUrl("src").takeIf { it.isNotBlank() }
                     ?: absUrl("data-src").takeIf { it.isNotBlank() }
                     ?: attr("data-original").takeIf { it.isNotBlank() }
-                title = attr("alt").takeIf { it.isNotBlank() }
+                title = attr("alt").takeIf { it.isNotBlank() } ?: ""
             }
 
             // Alternative title selectors
@@ -130,16 +130,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListParse(document: Document): List<SEpisode> {
-        return document.select(episodeListSelector()).mapNotNull { element ->
-            try {
-                episodeFromElement(element)
-            } catch (e: Exception) {
-                null
-            }
-        }
-    }
-
     override fun episodeListSelector(): String = "ul.episodes li, ul.all-episode li, .episode-list li, .episode-item"
 
     override fun episodeFromElement(element: Element): SEpisode {
