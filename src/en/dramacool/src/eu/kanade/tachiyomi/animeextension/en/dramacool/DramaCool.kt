@@ -212,7 +212,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     video.quality.contains("360") -> 1
                     else -> 0
                 }
-            }
+            },
         )
     }
 
