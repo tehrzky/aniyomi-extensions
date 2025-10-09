@@ -180,9 +180,9 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================= Utilities ==============================
     override fun List<Video>.sort(): List<Video> {
         return sortedWith(
-            compareByDescending { 
-                Regex("""(\d+)p""").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0 
-            }
+            compareByDescending {
+                Regex("""(\d+)p""").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            },
         )
     }
 
@@ -195,12 +195,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     private fun String.toDate(): Long {
-        return runCatching { 
-            DATE_FORMATTER.parse(trim())?.time 
+        return runCatching {
+            DATE_FORMATTER.parse(trim())?.time
         }.getOrNull() ?: 0L
     }
 
-    private fun String.encodeURL(): String = 
+    private fun String.encodeURL(): String =
         java.net.URLEncoder.encode(this, "UTF-8")
 
     companion object {
