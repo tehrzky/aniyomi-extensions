@@ -12,7 +12,6 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -91,7 +90,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             val fullTitle = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
             title = fullTitle.substringBefore("Episode").substringBefore("episode").trim()
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
-            description = document.selectFirst("meta[name=description]")?.attr("content")
+            
+            // Clean up description - remove the "Asianc - Dramacool:" prefix
+            val rawDescription = document.selectFirst("meta[name=description]")?.attr("content") ?: ""
+            description = rawDescription.substringAfter(":").trim()
 
             // Get details from info section
             document.select(".info p, .details p").forEach { p ->
@@ -132,27 +134,15 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
 
-        // Get all server options
+        // Get all server options from the multi-link section
         val serverElements = document.select(".muti_link li")
         
         serverElements.forEach { server ->
             val serverName = server.ownText().trim()
-            val embedUrl = server.attr("data-video")
+            val videoUrl = server.attr("data-video")
             
-            if (embedUrl.isNotBlank()) {
-                // Add the embed URL as a video option
-                // Users can try different servers to see which ones work
-                videos.add(Video(embedUrl, "Server: $serverName", embedUrl))
-            }
-        }
-
-        // If no servers found, try iframe as fallback
-        if (videos.isEmpty()) {
-            val iframe = document.selectFirst("iframe")
-            iframe?.attr("src")?.let { iframeSrc ->
-                if (iframeSrc.isNotBlank()) {
-                    videos.add(Video(iframeSrc, "Iframe Source", iframeSrc))
-                }
+            if (videoUrl.isNotBlank()) {
+                videos.add(Video(videoUrl, "Server: $serverName", videoUrl))
             }
         }
 
