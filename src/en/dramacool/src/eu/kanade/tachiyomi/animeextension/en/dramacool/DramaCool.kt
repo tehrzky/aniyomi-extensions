@@ -10,9 +10,6 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
-import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
-import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
@@ -123,28 +120,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val iframeUrl = document.selectFirst("iframe")?.absUrl("src") ?: return emptyList()
-        val iframeDoc = client.newCall(GET(iframeUrl)).execute().asJsoup()
-
-        return iframeDoc.select(videoListSelector()).flatMap(::videosFromElement)
+        
+        // Simple video extraction - you can enhance this later
+        return listOf(Video(iframeUrl, "Direct Link", iframeUrl))
     }
 
     override fun videoListSelector(): String = "ul.list-server-items li"
-
-    private val doodExtractor by lazy { DoodExtractor(client) }
-    private val streamwishExtractor by lazy { StreamWishExtractor(client, headers) }
-    private val streamtapeExtractor by lazy { StreamTapeExtractor(client) }
-
-    private fun videosFromElement(element: Element): List<Video> {
-        val url = element.attr("data-video")
-        return runCatching {
-            when {
-                url.contains("dood", ignoreCase = true) -> doodExtractor.videosFromUrl(url)
-                url.contains("dwish", ignoreCase = true) -> streamwishExtractor.videosFromUrl(url)
-                url.contains("streamtape", ignoreCase = true) -> streamtapeExtractor.videosFromUrl(url)
-                else -> emptyList()
-            }
-        }.getOrElse { emptyList() }
-    }
 
     override fun videoFromElement(element: Element): Video {
         throw UnsupportedOperationException()
@@ -179,11 +160,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================= Utilities ==============================
     override fun List<Video>.sort(): List<Video> {
-        return sortedWith(
-            compareByDescending {
-                Regex("""(\d+)p""").find(it.quality)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-            },
-        )
+        return this // Simple sorting - you can enhance this later
     }
 
     private fun parseStatus(statusString: String?): Int {
