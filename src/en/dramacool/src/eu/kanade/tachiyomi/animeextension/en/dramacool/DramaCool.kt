@@ -42,7 +42,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/most-popular-drama?page=$page")
     }
 
-    override fun popularAnimeSelector(): String = "ul.list-popular li a, .list-popular li a"
+    override fun popularAnimeSelector(): String = ".list-popular li a"
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
@@ -58,7 +58,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/recently-added?page=$page")
     }
 
-    override fun latestUpdatesSelector(): String = "ul.switch-block.list-episode-item li a"
+    override fun latestUpdatesSelector(): String = ".list-episode-item li a"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
         return SAnime.create().apply {
@@ -75,7 +75,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/search?keyword=${query.encodeURL()}&page=$page")
     }
 
-    override fun searchAnimeSelector(): String = "ul.switch-block.list-episode-item li a"
+    override fun searchAnimeSelector(): String = ".list-episode-item li a"
 
     override fun searchAnimeFromElement(element: Element): SAnime {
         return latestUpdatesFromElement(element)
