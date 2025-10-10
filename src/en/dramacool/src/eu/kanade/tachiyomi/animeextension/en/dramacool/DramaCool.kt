@@ -212,8 +212,8 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         videos.addAll(
                             StreamWishExtractor(client, headers).videosFromUrl(
                                 fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" }
-                            )
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
                         )
                     }
 
