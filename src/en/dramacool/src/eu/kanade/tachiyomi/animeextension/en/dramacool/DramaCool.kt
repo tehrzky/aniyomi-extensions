@@ -1,387 +1,179 @@
-package eu.kanade.tachiyomi.animeextension.en.dramacool
+// ============================ Video Links =============================
+override fun videoListParse(response: Response): List<Video> {
+    val document = response.asJsoup()
+    val videos = mutableListOf<Video>()
 
-import android.app.Application
-import android.widget.Toast
-import androidx.preference.EditTextPreference
-import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
-import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
-import eu.kanade.tachiyomi.animesource.model.SAnime
-import eu.kanade.tachiyomi.animesource.model.SEpisode
-import eu.kanade.tachiyomi.animesource.model.Video
-import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
-import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
-import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
-import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
-import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
-import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
-import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
-import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
-import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.Request
-import okhttp3.Response
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import java.text.SimpleDateFormat
-import java.util.Locale
+    // Extract all server links from the page
+    val serverLinks = mutableMapOf<String, String>()
 
-class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
+    // Method 1: Extract from .muti_link li elements
+    document.select(".muti_link li, ul.muti_link li").forEach { server ->
+        val serverName = server.ownText().trim().takeIf { it.isNotBlank() }
+            ?: server.text().trim()
+        val videoUrl = server.attr("data-video")
 
-    override val name = "DramaCool"
-
-    override val baseUrl by lazy {
-        preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!!.trimEnd('/')
-    }
-
-    override val lang = "en"
-
-    override val supportsLatest = true
-
-    private val preferences by lazy {
-        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
-    }
-
-    // ============================== Popular ===============================
-    override fun popularAnimeRequest(page: Int): Request {
-        return GET("$baseUrl/most-popular-drama")
-    }
-
-    override fun popularAnimeSelector(): String = ".list-popular li a"
-
-    override fun popularAnimeFromElement(element: Element): SAnime {
-        return SAnime.create().apply {
-            setUrlWithoutDomain(element.attr("href"))
-            title = element.attr("title").takeIf { it.isNotBlank() } ?: element.text()
+        if (videoUrl.isNotBlank() && serverName.isNotBlank()) {
+            serverLinks[serverName] = videoUrl
         }
     }
 
-    override fun popularAnimeNextPageSelector(): String? = null
+    // Method 2: Try alternative server list selectors
+    if (serverLinks.isEmpty()) {
+        document.select(".server-list li, ul.list-server-items li, .anime_muti_link li").forEach { server ->
+            val serverName = server.selectFirst("a")?.text()?.trim()
+                ?: server.ownText().trim()
+                ?: "Server"
 
-    // =============================== Latest ===============================
-    override fun latestUpdatesRequest(page: Int): Request {
-        return GET("$baseUrl/recently-added")
-    }
-
-    override fun latestUpdatesSelector(): String = ".list-episode-item li a"
-
-    override fun latestUpdatesFromElement(element: Element): SAnime {
-        return SAnime.create().apply {
-            setUrlWithoutDomain(element.attr("href"))
-            thumbnail_url = element.selectFirst("img")?.attr("data-original")
-            val fullTitle = element.selectFirst("h3.title")?.text() ?: "Unknown Title"
-            title = fullTitle.substringBefore("Episode").trim()
-        }
-    }
-
-    override fun latestUpdatesNextPageSelector(): String? = null
-
-    // =============================== Search ===============================
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        return GET("$baseUrl/search?keyword=${query.encodeURL()}")
-    }
-
-    override fun searchAnimeSelector(): String = ".list-episode-item li a"
-
-    override fun searchAnimeFromElement(element: Element): SAnime {
-        return latestUpdatesFromElement(element)
-    }
-
-    override fun searchAnimeNextPageSelector(): String? = null
-
-    // =========================== Anime Details ============================
-    override fun animeDetailsParse(document: Document): SAnime {
-        return SAnime.create().apply {
-            val fullTitle = document.selectFirst("h1, h2.title")?.text() ?: "Unknown Title"
-            title = fullTitle.substringBefore("Episode").substringBefore("episode").trim()
-            thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img")?.attr("src")
-
-            // Clean up description - remove the "Asianc - Dramacool:" prefix
-            val rawDescription = document.selectFirst("meta[name=description]")?.attr("content") ?: ""
-            description = rawDescription.substringAfter(":").trim()
-
-            // Get details from info section
-            document.select(".info p, .details p").forEach { p ->
-                val text = p.text()
-                when {
-                    text.contains("Genre:", ignoreCase = true) -> genre = p.select("a").joinToString { it.text() }
-                    text.contains("Status:", ignoreCase = true) -> status = parseStatus(p.select("a, span").last()?.text())
-                    text.contains("Network:", ignoreCase = true) -> author = p.select("a").text()
-                }
+            var videoUrl = server.attr("data-video")
+            if (videoUrl.isBlank()) {
+                videoUrl = server.attr("data-link")
             }
-        }
-    }
+            if (videoUrl.isBlank()) {
+                videoUrl = server.selectFirst("a")?.attr("data-video") ?: ""
+            }
+            if (videoUrl.isBlank()) {
+                videoUrl = server.selectFirst("a")?.attr("data-link") ?: ""
+            }
 
-    // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.list-episode-item-2.all-episode li a"
-
-    override fun episodeFromElement(element: Element): SEpisode {
-        return SEpisode.create().apply {
-            setUrlWithoutDomain(element.attr("href"))
-            val titleElement = element.selectFirst("h3.title")
-            val titleText = titleElement?.text() ?: ""
-
-            // Extract episode number from title
-            val episodeNum = Regex("""Episode\s*(\d+)""").find(titleText)?.groupValues?.get(1)
-                ?: Regex("""EP?\s*(\d+)""").find(titleText)?.groupValues?.get(1)
-                ?: Regex("""\b(\d+)\b""").find(titleText)?.groupValues?.get(1)
-                ?: "1"
-
-            val type = element.selectFirst("span.type")?.text() ?: "SUB"
-            name = "$type: Episode $episodeNum"
-            episode_number = episodeNum.toFloatOrNull() ?: 1F
-            date_upload = element.selectFirst("span.time")?.text().orEmpty().toDate()
-        }
-    }
-
-    // ============================ Video Links =============================
-    override fun videoListParse(response: Response): List<Video> {
-        val document = response.asJsoup()
-        val videos = mutableListOf<Video>()
-
-        // Extract all server links from the page
-        val serverLinks = mutableMapOf<String, String>()
-
-        // Method 1: Extract from .muti_link li elements
-        document.select(".muti_link li, ul.muti_link li").forEach { server ->
-            val serverName = server.ownText().trim().takeIf { it.isNotBlank() }
-                ?: server.text().trim()
-            val videoUrl = server.attr("data-video")
-
-            if (videoUrl.isNotBlank() && serverName.isNotBlank()) {
+            if (videoUrl.isNotBlank()) {
                 serverLinks[serverName] = videoUrl
             }
         }
+    }
 
-        // Method 2: Try alternative server list selectors
-        if (serverLinks.isEmpty()) {
-            document.select(".server-list li, ul.list-server-items li, .anime_muti_link li").forEach { server ->
-                val serverName = server.selectFirst("a")?.text()?.trim()
-                    ?: server.ownText().trim()
-                    ?: "Server"
-
-                var videoUrl = server.attr("data-video")
-                if (videoUrl.isBlank()) {
-                    videoUrl = server.attr("data-link")
-                }
-                if (videoUrl.isBlank()) {
-                    videoUrl = server.selectFirst("a")?.attr("data-video") ?: ""
-                }
-                if (videoUrl.isBlank()) {
-                    videoUrl = server.selectFirst("a")?.attr("data-link") ?: ""
-                }
-
-                if (videoUrl.isNotBlank()) {
-                    serverLinks[serverName] = videoUrl
-                }
+    // Method 3: Extract from iframe if no servers found
+    if (serverLinks.isEmpty()) {
+        document.select("iframe[src], iframe[data-src]").forEach { iframe ->
+            val iframeSrc = iframe.attr("src").ifBlank { iframe.attr("data-src") }
+            if (iframeSrc.isNotBlank()) {
+                serverLinks["Standard Server"] = iframeSrc
             }
         }
+    }
 
-        // Method 3: Extract from iframe if no servers found
-        if (serverLinks.isEmpty()) {
-            document.select("iframe[src], iframe[data-src]").forEach { iframe ->
-                val iframeSrc = iframe.attr("src").ifBlank { iframe.attr("data-src") }
-                if (iframeSrc.isNotBlank()) {
-                    serverLinks["Standard Server"] = iframeSrc
-                }
-            }
+    // Now process each server link and extract videos using appropriate extractors
+    serverLinks.forEach { (serverName, url) ->
+        val fullUrl = when {
+            url.startsWith("http") -> url
+            url.startsWith("//") -> "https:$url"
+            url.startsWith("/") -> "$baseUrl$url"
+            else -> url
         }
 
-        // Now process each server link and extract videos using appropriate extractors
-        serverLinks.forEach { (serverName, url) ->
-            val fullUrl = when {
-                url.startsWith("http") -> url
-                url.startsWith("//") -> "https:$url"
-                url.startsWith("/") -> "$baseUrl$url"
-                else -> url
-            }
-
-            try {
-                when {
-                    // StreamWish and its mirrors
-                    fullUrl.contains("streamwish", ignoreCase = true) ||
-                        fullUrl.contains("strwish", ignoreCase = true) ||
-                        fullUrl.contains("wishfast", ignoreCase = true) ||
-                        fullUrl.contains("awish", ignoreCase = true) ||
-                        fullUrl.contains("streamplay", ignoreCase = true) -> {
-                        // FIXED: Added headers parameter and proper quality selector
-                        videos.addAll(StreamWishExtractor(client, headers).videosFromUrl(
+        try {
+            when {
+                // StreamWish and its mirrors
+                fullUrl.contains("streamwish", ignoreCase = true) ||
+                    fullUrl.contains("strwish", ignoreCase = true) ||
+                    fullUrl.contains("wishfast", ignoreCase = true) ||
+                    fullUrl.contains("awish", ignoreCase = true) ||
+                    fullUrl.contains("streamplay", ignoreCase = true) -> {
+                    videos.addAll(
+                        StreamWishExtractor(client, headers).videosFromUrl(
                             url = fullUrl,
                             prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // VidHide and its mirrors
-                    fullUrl.contains("vidhide", ignoreCase = true) ||
-                        fullUrl.contains("vidhidevip", ignoreCase = true) ||
-                        fullUrl.contains("vidspeeds", ignoreCase = true) -> {
-                        // FIXED: Added proper quality selector
-                        videos.addAll(VidHideExtractor(client).videosFromUrl(
-                            url = fullUrl,
-                            prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // StreamTape
-                    fullUrl.contains("streamtape", ignoreCase = true) ||
-                        fullUrl.contains("strtape", ignoreCase = true) ||
-                        fullUrl.contains("stape", ignoreCase = true) -> {
-                        // FIXED: Added proper quality selector
-                        videos.addAll(StreamTapeExtractor(client).videosFromUrl(
-                            url = fullUrl,
-                            prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // MixDrop and its mirrors
-                    fullUrl.contains("mixdrop", ignoreCase = true) ||
-                        fullUrl.contains("mixdrp", ignoreCase = true) -> {
-                        // FIXED: Added proper quality selector
-                        videos.addAll(MixDropExtractor(client).videosFromUrl(
-                            url = fullUrl,
-                            prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // Filemoon and its mirrors
-                    fullUrl.contains("filemoon", ignoreCase = true) ||
-                        fullUrl.contains("moonplayer", ignoreCase = true) -> {
-                        // FIXED: Added proper quality selector
-                        videos.addAll(FilemoonExtractor(client).videosFromUrl(
-                            url = fullUrl,
-                            prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // DoodStream and its mirrors
-                    fullUrl.contains("dood", ignoreCase = true) ||
-                        fullUrl.contains("doodstream", ignoreCase = true) ||
-                        fullUrl.contains("ds2play", ignoreCase = true) ||
-                        fullUrl.contains("ds2video", ignoreCase = true) -> {
-                        // FIXED: Added proper quality selector
-                        videos.addAll(DoodExtractor(client).videosFromUrl(
-                            url = fullUrl,
-                            prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // Mp4Upload
-                    fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIXED: Added proper quality selector
-                        videos.addAll(Mp4uploadExtractor(client).videosFromUrl(
-                            url = fullUrl,
-                            prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // Streamlare
-                    fullUrl.contains("streamlare", ignoreCase = true) ||
-                        fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        // FIXED: Added proper quality selector
-                        videos.addAll(StreamlareExtractor(client).videosFromUrl(
-                            url = fullUrl,
-                            prefix = serverName,
-                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
-                        ))
-                    }
-
-                    // For unknown servers, add the embed URL directly as fallback
-                    else -> {
-                        videos.add(Video(fullUrl, serverName, fullUrl))
-                    }
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
                 }
-            } catch (e: Exception) {
-                // If extraction fails, add the embed URL as fallback
-                videos.add(Video(fullUrl, "$serverName (Embed)", fullUrl))
-            }
-        }
 
-        return videos.distinctBy { it.url }
-    }
+                // VidHide and its mirrors
+                fullUrl.contains("vidhide", ignoreCase = true) ||
+                    fullUrl.contains("vidhidevip", ignoreCase = true) ||
+                    fullUrl.contains("vidspeeds", ignoreCase = true) -> {
+                    videos.addAll(
+                        VidHideExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
+                }
 
-    override fun videoListSelector(): String = throw UnsupportedOperationException()
+                // StreamTape
+                fullUrl.contains("streamtape", ignoreCase = true) ||
+                    fullUrl.contains("strtape", ignoreCase = true) ||
+                    fullUrl.contains("stape", ignoreCase = true) -> {
+                    videos.addAll(
+                        StreamTapeExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
+                }
 
-    override fun videoFromElement(element: Element): Video {
-        throw UnsupportedOperationException()
-    }
+                // MixDrop and its mirrors
+                fullUrl.contains("mixdrop", ignoreCase = true) ||
+                    fullUrl.contains("mixdrp", ignoreCase = true) -> {
+                    videos.addAll(
+                        MixDropExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
+                }
 
-    override fun videoUrlParse(document: Document): String {
-        throw UnsupportedOperationException()
-    }
+                // Filemoon and its mirrors
+                fullUrl.contains("filemoon", ignoreCase = true) ||
+                    fullUrl.contains("moonplayer", ignoreCase = true) -> {
+                    videos.addAll(
+                        FilemoonExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
+                }
 
-    // ============================== Settings ==============================
-    override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        EditTextPreference(screen.context).apply {
-            key = PREF_DOMAIN_KEY
-            title = "Custom Domain"
-            summary = "Enter your preferred DramaCool domain (e.g., https://asianctv.net)"
-            setDefaultValue(PREF_DOMAIN_DEFAULT)
-            dialogTitle = "Domain Settings"
-            dialogMessage = "Enter the full URL of your preferred DramaCool clone site"
+                // DoodStream and its mirrors
+                fullUrl.contains("dood", ignoreCase = true) ||
+                    fullUrl.contains("doodstream", ignoreCase = true) ||
+                    fullUrl.contains("ds2play", ignoreCase = true) ||
+                    fullUrl.contains("ds2video", ignoreCase = true) -> {
+                    videos.addAll(
+                        DoodExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
+                }
 
-            setOnPreferenceChangeListener { _, newValue ->
-                val newDomain = (newValue as String).trim()
-                if (newDomain.isBlank() || !newDomain.startsWith("http")) {
-                    Toast.makeText(screen.context, "Please enter a valid URL starting with http/https", Toast.LENGTH_LONG).show()
-                    false
-                } else {
-                    preferences.edit().putString(key, newDomain.trimEnd('/')).commit()
-                    true
+                // Mp4Upload
+                fullUrl.contains("mp4upload", ignoreCase = true) -> {
+                    videos.addAll(
+                        Mp4uploadExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
+                }
+
+                // Streamlare
+                fullUrl.contains("streamlare", ignoreCase = true) ||
+                    fullUrl.contains("slwatch", ignoreCase = true) -> {
+                    videos.addAll(
+                        StreamlareExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") },
+                        ),
+                    )
+                }
+
+                // For unknown servers, add the embed URL directly as fallback
+                else -> {
+                    videos.add(Video(fullUrl, serverName, fullUrl))
                 }
             }
-        }.also(screen::addPreference)
-    }
-
-    // ============================= Utilities ==============================
-    override fun List<Video>.sort(): List<Video> {
-        return sortedWith(
-            compareByDescending { video ->
-                when {
-                    video.quality.contains("1080") -> 5
-                    video.quality.contains("720") -> 4
-                    video.quality.contains("480") -> 3
-                    video.quality.contains("360") -> 2
-                    video.quality.contains("Standard") -> 1
-                    else -> 0
-                }
-            },
-        )
-    }
-
-    private fun parseStatus(statusString: String?): Int {
-        val status = statusString?.lowercase() ?: return SAnime.UNKNOWN
-        return when {
-            status.contains("ongoing") -> SAnime.ONGOING
-            status.contains("completed") -> SAnime.COMPLETED
-            else -> SAnime.UNKNOWN
+        } catch (e: Exception) {
+            // If extraction fails, add the embed URL as fallback
+            videos.add(Video(fullUrl, "$serverName (Embed)", fullUrl))
         }
     }
 
-    private fun String.toDate(): Long {
-        return runCatching {
-            DATE_FORMATTER.parse(trim())?.time
-        }.getOrNull() ?: 0L
-    }
-
-    private fun String.encodeURL(): String =
-        java.net.URLEncoder.encode(this, "UTF-8")
-
-    companion object {
-        private val DATE_FORMATTER by lazy {
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
-        }
-
-        private const val PREF_DOMAIN_KEY = "preferred_domain"
-        private const val PREF_DOMAIN_DEFAULT = "https://asianctv.net"
-    }
+    return videos.distinctBy { it.url }
 }
