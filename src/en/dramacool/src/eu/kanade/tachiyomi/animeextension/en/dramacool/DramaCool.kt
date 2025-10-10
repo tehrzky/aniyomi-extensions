@@ -201,14 +201,14 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 try {
                     val embedDocument = client.newCall(GET(currentUrl, headers)).execute().asJsoup()
                     val realEmbedUrl = embedDocument.selectFirst("iframe[src], iframe[data-src]")?.attr("src")?.ifBlank { embedDocument.selectFirst("iframe[data-src]")?.attr("data-src") }
-// Line 211 was here. It is now blank to eliminate any trailing whitespace.
+
                     if (realEmbedUrl.isNullOrBlank()) {
                         // If we can't find the inner iframe, we can't get the external host.
                         videos.add(Video(currentUrl, "$serverName (Internal Embed Page - FAILED TO FIND EXTERNAL IFRAME)", currentUrl))
                         return@forEach
                     }
 
-                    // Update the currentUrl to the real external host link found inside the internal embed page, 
+                    // Update the currentUrl to the real external host link found inside the internal embed page,
                     // ensuring it is also an absolute URL.
                     currentUrl = realEmbedUrl.toAbsoluteUrl()
                 } catch (e: Exception) {
