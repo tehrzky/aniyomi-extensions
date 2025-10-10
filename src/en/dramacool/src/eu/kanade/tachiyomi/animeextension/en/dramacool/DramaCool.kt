@@ -209,7 +209,8 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     }
 
                     // *** DEBUG LOGGING: Add video entry with the real host URL found ***
-                    videos.add(Video(currentUrl, "--- NEW HOST DETECTED: $realEmbedUrl ---", currentUrl))
+                    val debugVideo = Video(currentUrl, "--- NEW HOST DETECTED: $realEmbedUrl ---", currentUrl)
+                    videos.add(debugVideo)
 
                     // Update the currentUrl to the real external host link found inside the internal embed page, 
                     // ensuring it is also an absolute URL.
