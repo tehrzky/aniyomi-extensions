@@ -10,6 +10,14 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
+import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
+import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
+import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
+import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
+import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
@@ -134,6 +142,9 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
 
+        // Extract all server links from the page
+        val serverLinks = mutableMapOf<String, String>()
+
         // Method 1: Extract from .muti_link li elements
         document.select(".muti_link li, ul.muti_link li").forEach { server ->
             val serverName = server.ownText().trim().takeIf { it.isNotBlank() }
@@ -141,18 +152,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             val videoUrl = server.attr("data-video")
 
             if (videoUrl.isNotBlank() && serverName.isNotBlank()) {
-                val fullUrl = when {
-                    videoUrl.startsWith("http") -> videoUrl
-                    videoUrl.startsWith("//") -> "https:$videoUrl"
-                    videoUrl.startsWith("/") -> "$baseUrl$videoUrl"
-                    else -> videoUrl
-                }
-                videos.add(Video(fullUrl, serverName, fullUrl))
+                serverLinks[serverName] = videoUrl
             }
         }
 
         // Method 2: Try alternative server list selectors
-        if (videos.isEmpty()) {
+        if (serverLinks.isEmpty()) {
             document.select(".server-list li, ul.list-server-items li, .anime_muti_link li").forEach { server ->
                 val serverName = server.selectFirst("a")?.text()?.trim()
                     ?: server.ownText().trim()
@@ -170,77 +175,94 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
 
                 if (videoUrl.isNotBlank()) {
-                    val fullUrl = when {
-                        videoUrl.startsWith("http") -> videoUrl
-                        videoUrl.startsWith("//") -> "https:$videoUrl"
-                        videoUrl.startsWith("/") -> "$baseUrl$videoUrl"
-                        else -> videoUrl
-                    }
-                    videos.add(Video(fullUrl, serverName, fullUrl))
+                    serverLinks[serverName] = videoUrl
                 }
             }
         }
 
-        // Method 3: Extract from iframe
-        if (videos.isEmpty()) {
+        // Method 3: Extract from iframe if no servers found
+        if (serverLinks.isEmpty()) {
             document.select("iframe[src], iframe[data-src]").forEach { iframe ->
                 val iframeSrc = iframe.attr("src").ifBlank { iframe.attr("data-src") }
                 if (iframeSrc.isNotBlank()) {
-                    val fullUrl = when {
-                        iframeSrc.startsWith("http") -> iframeSrc
-                        iframeSrc.startsWith("//") -> "https:$iframeSrc"
-                        iframeSrc.startsWith("/") -> "$baseUrl$iframeSrc"
-                        else -> iframeSrc
-                    }
-                    videos.add(Video(fullUrl, "Standard Server", fullUrl))
+                    serverLinks["Standard Server"] = iframeSrc
                 }
             }
         }
 
-        // Method 4: Look in scripts for embed URLs
-        if (videos.isEmpty()) {
-            document.select("script:not([src])").forEach { script ->
-                val scriptContent = script.html()
+        // Now process each server link and extract videos using appropriate extractors
+        serverLinks.forEach { (serverName, url) ->
+            val fullUrl = when {
+                url.startsWith("http") -> url
+                url.startsWith("//") -> "https:$url"
+                url.startsWith("/") -> "$baseUrl$url"
+                else -> url
+            }
 
-                // Look for server data in JavaScript
-                Regex("""data-video\s*[=:]\s*["']([^"']+)["']""").findAll(scriptContent).forEach { match ->
-                    val url = match.groupValues[1]
-                    if (url.isNotBlank()) {
-                        val fullUrl = when {
-                            url.startsWith("http") -> url
-                            url.startsWith("//") -> "https:$url"
-                            url.startsWith("/") -> "$baseUrl$url"
-                            else -> url
-                        }
-                        videos.add(Video(fullUrl, "Embed Server", fullUrl))
+            try {
+                when {
+                    // StreamWish and its mirrors
+                    fullUrl.contains("streamwish", ignoreCase = true) ||
+                    fullUrl.contains("strwish", ignoreCase = true) ||
+                    fullUrl.contains("wishfast", ignoreCase = true) ||
+                    fullUrl.contains("awish", ignoreCase = true) ||
+                    fullUrl.contains("streamplay", ignoreCase = true) -> {
+                        videos.addAll(StreamWishExtractor(client, headers).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // VidHide and its mirrors
+                    fullUrl.contains("vidhide", ignoreCase = true) ||
+                    fullUrl.contains("vidhidevip", ignoreCase = true) ||
+                    fullUrl.contains("vidspeeds", ignoreCase = true) -> {
+                        videos.addAll(VidHideExtractor(client).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // StreamTape
+                    fullUrl.contains("streamtape", ignoreCase = true) ||
+                    fullUrl.contains("strtape", ignoreCase = true) ||
+                    fullUrl.contains("stape", ignoreCase = true) -> {
+                        videos.addAll(StreamTapeExtractor(client).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // MixDrop and its mirrors
+                    fullUrl.contains("mixdrop", ignoreCase = true) ||
+                    fullUrl.contains("mixdrp", ignoreCase = true) -> {
+                        videos.addAll(MixDropExtractor(client).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // Filemoon and its mirrors
+                    fullUrl.contains("filemoon", ignoreCase = true) ||
+                    fullUrl.contains("moonplayer", ignoreCase = true) -> {
+                        videos.addAll(FilemoonExtractor(client).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // DoodStream and its mirrors
+                    fullUrl.contains("dood", ignoreCase = true) ||
+                    fullUrl.contains("doodstream", ignoreCase = true) ||
+                    fullUrl.contains("ds2play", ignoreCase = true) ||
+                    fullUrl.contains("ds2video", ignoreCase = true) -> {
+                        videos.addAll(DoodExtractor(client).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // Mp4Upload
+                    fullUrl.contains("mp4upload", ignoreCase = true) -> {
+                        videos.addAll(Mp4uploadExtractor(client).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // Streamlare
+                    fullUrl.contains("streamlare", ignoreCase = true) ||
+                    fullUrl.contains("slwatch", ignoreCase = true) -> {
+                        videos.addAll(StreamlareExtractor(client).videosFromUrl(fullUrl, serverName))
+                    }
+
+                    // For unknown servers, add the embed URL directly as fallback
+                    else -> {
+                        videos.add(Video(fullUrl, serverName, fullUrl))
                     }
                 }
-
-                // Look for common video hosting patterns
-                listOf(
-                    Regex("""(https?://[^"'\s]*streamwish[^"'\s]*)"""),
-                    Regex("""(https?://[^"'\s]*vidhide[^"'\s]*)"""),
-                    Regex("""(https?://[^"'\s]*streamtape[^"'\s]*)"""),
-                    Regex("""(https?://[^"'\s]*mixdrop[^"'\s]*)"""),
-                    Regex("""(https?://[^"'\s]*\.m3u8[^"'\s]*)"""),
-                    Regex("""(https?://[^"'\s]*\.mp4[^"'\s]*)"""),
-                ).forEach { regex ->
-                    regex.findAll(scriptContent).forEach { match ->
-                        val url = match.groupValues[1].trim('"', '\'', ' ')
-                        if (url.isNotBlank()) {
-                            val serverName = when {
-                                url.contains("streamwish") -> "StreamWish"
-                                url.contains("vidhide") -> "VidHide"
-                                url.contains("streamtape") -> "StreamTape"
-                                url.contains("mixdrop") -> "MixDrop"
-                                url.contains(".m3u8") -> "HLS"
-                                url.contains(".mp4") -> "MP4"
-                                else -> "Server"
-                            }
-                            videos.add(Video(url, serverName, url))
-                        }
-                    }
-                }
+            } catch (e: Exception) {
+                // If extraction fails, add the embed URL as fallback
+                videos.add(Video(fullUrl, "$serverName (Embed)", fullUrl))
             }
         }
 
