@@ -272,23 +272,18 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
+                        // FIX: Reverted to expected signature: (url, videoName, headers) to fix compilation.
                         videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(
-                                fullUrl,
-                                headers,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, "$serverName - ", headers),
                         )
                     }
 
                     // Streamlare
                     fullUrl.contains("streamlare", ignoreCase = true) ||
                         fullUrl.contains("slwatch", ignoreCase = true) -> {
+                        // FIX: Reverted to expected signature: (url, videoName) to fix compilation.
                         videos.addAll(
-                            StreamlareExtractor(client).videosFromUrl(
-                                fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            StreamlareExtractor(client).videosFromUrl(fullUrl, "$serverName - "),
                         )
                     }
 
