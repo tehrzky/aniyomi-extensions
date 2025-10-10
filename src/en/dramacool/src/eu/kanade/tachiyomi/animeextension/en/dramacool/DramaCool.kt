@@ -208,12 +208,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     if (realEmbedUrl.isNullOrBlank()) {
                         // If we can't find the inner iframe, it's still unhandled
-                        videos.add(Video(currentUrl, "$serverName (Internal Embed Page - Host not found)", currentUrl))
+                        videos.add(Video(currentUrl, "$serverName (Internal Embed Page - FAILED TO FIND EXTERNAL IFRAME)", currentUrl))
                         return@forEach
                     }
 
                     // *** DEBUG LOGGING: Add video entry with the real host URL found ***
-                    videos.add(Video(currentUrl, "$serverName (DEBUG: Found Host URL $realEmbedUrl)", currentUrl))
+                    videos.add(Video(currentUrl, "--- NEW HOST DETECTED: $realEmbedUrl ---", currentUrl))
 
                     // Update the currentUrl to the real external host link found inside the internal embed page
                     currentUrl = when {
@@ -317,7 +317,9 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                             if (finalUrl.contains(".mp4", ignoreCase = true) || finalUrl.contains(".m3u8", ignoreCase = true) || finalUrl.contains(".mkv", ignoreCase = true)) {
                                 Video(finalUrl, "$serverName - Direct Stream", finalUrl)
                             } else {
-                                Video(currentUrl, "$serverName (Unhandled Embed)", currentUrl)
+                                // Changed message to show the unhandled URL for user reporting
+                                val shortUrl = currentUrl.substringBefore("?")
+                                Video(currentUrl, "$serverName (Unhandled Host: $shortUrl)", currentUrl)
                             }
                         } catch (e: Exception) {
                             Video(currentUrl, "$serverName (Connection Error)", currentUrl)
