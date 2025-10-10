@@ -146,7 +146,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         debugInfo.add("Method 1: Checking .muti_link li")
         val method1Elements = document.select(".muti_link li, ul.muti_link li")
         debugInfo.add("Found ${method1Elements.size} elements with Method 1")
-        
+
         method1Elements.forEach { server ->
             val serverName = server.ownText().trim().takeIf { it.isNotBlank() }
                 ?: server.text().trim()
@@ -163,7 +163,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             debugInfo.add("Method 2: Checking alternative selectors")
             val method2Elements = document.select(".server-list li, ul.list-server-items li, .anime_muti_link li")
             debugInfo.add("Found ${method2Elements.size} elements with Method 2")
-            
+
             method2Elements.forEach { server ->
                 val serverName = server.selectFirst("a")?.text()?.trim()
                     ?: server.ownText().trim()
@@ -192,7 +192,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             debugInfo.add("Method 3: Checking iframes")
             val iframes = document.select("iframe[src], iframe[data-src]")
             debugInfo.add("Found ${iframes.size} iframes")
-            
+
             iframes.forEach { iframe ->
                 val iframeSrc = iframe.attr("src").ifBlank { iframe.attr("data-src") }
                 if (iframeSrc.isNotBlank()) {
@@ -205,7 +205,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         // Method 4: Check for common DramaCool patterns
         if (serverLinks.isEmpty()) {
             debugInfo.add("Method 4: Checking common patterns")
-            
+
             // Try to find any element with data-video attribute
             document.select("[data-video]").forEach { el ->
                 val url = el.attr("data-video")
@@ -220,17 +220,17 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         // Method 5: HTML structure analysis (if still no servers found)
         if (serverLinks.isEmpty()) {
             debugInfo.add("Method 5: HTML Structure Analysis")
-            
+
             // Check what ul/li elements exist
             val allUls = document.select("ul")
             debugInfo.add("Found ${allUls.size} <ul> elements on page")
-            
+
             allUls.take(10).forEachIndexed { idx, ul ->
                 val ulClass = ul.className().ifBlank { "no-class" }
                 val ulId = ul.id().ifBlank { "no-id" }
                 val liCount = ul.select("li").size
                 debugInfo.add("UL[$idx]: class='$ulClass' id='$ulId' lis=$liCount")
-                
+
                 // Show first few li items
                 ul.select("li").take(3).forEachIndexed { liIdx, li ->
                     val attrs = li.attributes().asList()
