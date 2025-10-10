@@ -45,7 +45,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    // ============================== Popular ===============================
+    // ============================== Popular = ===============================
     override fun popularAnimeRequest(page: Int): Request {
         return GET("$baseUrl/most-popular-drama")
     }
@@ -272,9 +272,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: Swapped the position of headers and videoName arguments to match the expected signature: (url, videoName, headers).
+                        // FIX: Reverting argument order to (url, headers, videoName) based on compiler error 
+                        // that requests Headers in the second position and String in the third.
                         videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, "$serverName - ", headers),
+                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, headers, "$serverName - "),
                         )
                     }
 
