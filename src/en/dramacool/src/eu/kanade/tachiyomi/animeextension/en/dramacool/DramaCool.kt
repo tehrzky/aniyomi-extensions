@@ -314,7 +314,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     video.quality.contains("Standard") -> 1
                     else -> 0
                 }
-            }
+            },
         )
     }
 
