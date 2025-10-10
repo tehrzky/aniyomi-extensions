@@ -215,10 +215,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // VidHide and its mirrors (Requires headers and videoNameGen)
+                    // VidHide and its mirrors (Enhanced mirror detection)
                     fullUrl.contains("vidhide", ignoreCase = true) ||
                         fullUrl.contains("vidhidevip", ignoreCase = true) ||
-                        fullUrl.contains("vidspeeds", ignoreCase = true) -> {
+                        fullUrl.contains("vidspeeds", ignoreCase = true) ||
+                        fullUrl.contains("mycloud", ignoreCase = true) || // Added common mirror
+                        fullUrl.contains("mcloud", ignoreCase = true) -> { // Added common mirror
                         videos.addAll(
                             VidHideExtractor(client, headers).videosFromUrl(
                                 fullUrl,
@@ -237,9 +239,11 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // MixDrop and its mirrors (Requires serverName String)
+                    // MixDrop and its mirrors (Enhanced mirror detection)
                     fullUrl.contains("mixdrop", ignoreCase = true) ||
-                        fullUrl.contains("mixdrp", ignoreCase = true) -> {
+                        fullUrl.contains("mixdrp", ignoreCase = true) ||
+                        fullUrl.contains("mdrama", ignoreCase = true) || // Added common mirror
+                        fullUrl.contains("mdstrm", ignoreCase = true) -> { // Added common mirror
                         // FIX: Changed to use serverName string
                         videos.addAll(
                             MixDropExtractor(client).videosFromUrl(fullUrl, serverName),
@@ -268,9 +272,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: Restoring the full signature (url, headers, videoNameGen) for robust video object creation,
-                        // which should resolve the runtime "unrecognized file format" error by ensuring the extractor
-                        // returns a fully qualified Video object instead of a broken stream.
                         videos.addAll(
                             Mp4uploadExtractor(client).videosFromUrl(
                                 fullUrl,
@@ -283,7 +284,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     // Streamlare
                     fullUrl.contains("streamlare", ignoreCase = true) ||
                         fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        // FIX: Adding videoNameGen lambda for robust naming, preventing runtime issues from malformed Video objects.
                         videos.addAll(
                             StreamlareExtractor(client).videosFromUrl(
                                 fullUrl,
@@ -292,14 +292,27 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // For unknown servers, add the embed URL directly as fallback
+                    // For unknown servers, try to follow redirects to catch direct video streams
                     else -> {
-                        videos.add(Video(fullUrl, serverName, fullUrl))
+                        val finalVideo = try {
+                            // Try to follow redirects for generic server links.
+                            // If the final URL contains a video file extension, treat it as a direct stream.
+                            val finalUrl = client.newCall(GET(fullUrl, headers)).execute().request.url.toString()
+                            if (finalUrl.contains(".mp4", ignoreCase = true) || finalUrl.contains(".m3u8", ignoreCase = true) || finalUrl.contains(".mkv", ignoreCase = true)) {
+                                Video(finalUrl, "$serverName - Direct Stream", finalUrl)
+                            } else {
+                                // If it didn't redirect to a video file, it's likely an unhandled embed page.
+                                Video(fullUrl, "$serverName (Unhandled Embed)", fullUrl)
+                            }
+                        } catch (e: Exception) {
+                            Video(fullUrl, "$serverName (Connection Error)", fullUrl)
+                        }
+                        videos.add(finalVideo)
                     }
                 }
             } catch (e: Exception) {
-                // If extraction fails, use a clearer label in the Video object
-                videos.add(Video(fullUrl, "$serverName (Extraction Failed)", fullUrl))
+                // If extraction fails for a known server, include the exception message for better debugging
+                videos.add(Video(fullUrl, "$serverName (Extraction Failed: ${e.message})", fullUrl))
             }
         }
 
