@@ -61,7 +61,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun popularAnimeNextPageSelector(): String? = null
 
-    // =============================== Latest = ===============================
+    // =============================== Latest ===============================
     override fun latestUpdatesRequest(page: Int): Request {
         return GET("$baseUrl/recently-added")
     }
@@ -272,7 +272,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: Reverting argument order to (url, headers, videoName) based on compiler error 
+                        // FIX: Reverting argument order to (url, headers, videoName) based on compiler error
                         // that requests Headers in the second position and String in the third.
                         videos.addAll(
                             Mp4uploadExtractor(client).videosFromUrl(fullUrl, headers, "$serverName - "),
