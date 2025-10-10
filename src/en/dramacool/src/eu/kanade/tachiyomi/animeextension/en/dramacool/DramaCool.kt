@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
+import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
@@ -250,7 +251,8 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         currentUrl.contains("vidhidevip", ignoreCase = true) ||
                         currentUrl.contains("vidspeeds", ignoreCase = true) ||
                         currentUrl.contains("mycloud", ignoreCase = true) || // Added common mirror
-                        currentUrl.contains("mcloud", ignoreCase = true) -> { // Added common mirror
+                        currentUrl.contains("mcloud", ignoreCase = true) ||
+                        currentUrl.contains("vcloud", ignoreCase = true) -> { // ADDED 'vcloud' mirror
                         videos.addAll(
                             VidHideExtractor(client, headers).videosFromUrl(
                                 currentUrl,
@@ -308,6 +310,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         currentUrl.contains("slwatch", ignoreCase = true) -> {
                         videos.addAll(
                             StreamlareExtractor(client).videosFromUrl(currentUrl, "$serverName - "),
+                        )
+                    }
+                    
+                    // Voe (New Extractor)
+                    currentUrl.contains("voe.sx", ignoreCase = true) -> {
+                        videos.addAll(
+                            VoeExtractor(client).videosFromUrl(currentUrl),
                         )
                     }
 
