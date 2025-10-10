@@ -140,6 +140,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val videos = mutableListOf<Video>()
         val serverLinks = mutableMapOf<String, String>()
 
+        // Debug: Add a video showing what page we're processing
+        val pageUrl = response.request.url.toString()
+        videos.add(Video(pageUrl, "DEBUG: Processing page - $pageUrl", pageUrl))
+
         document.select(".muti_link li, ul.muti_link li").forEach { server ->
             val serverName = server.ownText().trim().takeIf { it.isNotBlank() }
                 ?: server.text().trim()
@@ -180,6 +184,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     serverLinks["Standard Server (Main Player)"] = iframeSrc
                 }
             }
+        }
+
+        // Debug: Add info about servers found
+        if (serverLinks.isEmpty()) {
+            videos.add(Video(pageUrl, "DEBUG: No server links found on page", pageUrl))
+        } else {
+            videos.add(Video(pageUrl, "DEBUG: Found ${serverLinks.size} server(s): ${serverLinks.keys.joinToString()}", pageUrl))
         }
 
         serverLinks.forEach { (serverName, initialUrl) ->
@@ -297,7 +308,24 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
 
-        return videos.distinctBy { it.url }
+        val distinctVideos = videos.distinctBy { it.url }
+
+        // Separate debug videos from actual videos
+        val debugVideos = distinctVideos.filter { it.quality.startsWith("DEBUG:") }
+        val actualVideos = distinctVideos.filterNot { it.quality.startsWith("DEBUG:") }
+
+        // If no actual videos were extracted, return debug info and a helpful error
+        if (actualVideos.isEmpty()) {
+            return debugVideos + Video(
+                url = response.request.url.toString(),
+                quality = "ERROR: No working video sources found. Try a different episode or server.",
+                videoUrl = response.request.url.toString(),
+            )
+        }
+
+        // Return actual videos (optionally include debug info by uncommenting the line below)
+        // return debugVideos + actualVideos
+        return actualVideos
     }
 
     override fun videoListSelector(): String = throw UnsupportedOperationException()
