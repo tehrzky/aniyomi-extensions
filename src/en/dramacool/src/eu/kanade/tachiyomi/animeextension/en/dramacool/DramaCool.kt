@@ -230,13 +230,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             try {
                 when {
-                    // StreamWish and its mirrors (NOW INCLUDING VIDBASIC.TOP)
+                    // StreamWish and its mirrors (VIDBASIC REMOVED)
                     currentUrl.contains("streamwish", ignoreCase = true) ||
                         currentUrl.contains("strwish", ignoreCase = true) ||
                         currentUrl.contains("wishfast", ignoreCase = true) ||
                         currentUrl.contains("awish", ignoreCase = true) ||
-                        currentUrl.contains("streamplay", ignoreCase = true) ||
-                        currentUrl.contains("vidbasic", ignoreCase = true) -> {
+                        currentUrl.contains("streamplay", ignoreCase = true) -> {
                         videos.addAll(
                             StreamWishExtractor(client, headers).videosFromUrl(
                                 currentUrl,
@@ -245,13 +244,14 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // VidHide and its mirrors (Enhanced mirror detection)
+                    // VidHide and its mirrors (Enhanced mirror detection) (VIDBASIC ADDED)
                     currentUrl.contains("vidhide", ignoreCase = true) ||
                         currentUrl.contains("vidhidevip", ignoreCase = true) ||
                         currentUrl.contains("vidspeeds", ignoreCase = true) ||
                         currentUrl.contains("mycloud", ignoreCase = true) ||
                         currentUrl.contains("mcloud", ignoreCase = true) ||
-                        currentUrl.contains("vcloud", ignoreCase = true) -> {
+                        currentUrl.contains("vcloud", ignoreCase = true) ||
+                        currentUrl.contains("vidbasic", ignoreCase = true) -> {
                         videos.addAll(
                             VidHideExtractor(client, headers).videosFromUrl(
                                 currentUrl,
