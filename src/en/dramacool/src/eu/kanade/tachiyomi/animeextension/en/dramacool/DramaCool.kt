@@ -214,7 +214,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     // Update the currentUrl to the real external host link found inside the internal embed page, 
                     // ensuring it is also an absolute URL.
                     currentUrl = realEmbedUrl.toAbsoluteUrl()
-
                 } catch (e: Exception) {
                     videos.add(Video(currentUrl, "$serverName (Internal Embed Failed: ${e.message})", currentUrl))
                     return@forEach
