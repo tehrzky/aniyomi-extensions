@@ -15,7 +15,7 @@ import eu.kanade.tachiyomi.lib.filemoonextractor.FilemoonExtractor
 import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
-import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
+import eu.kan.ade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
 import eu.kanade.tachiyomi.network.GET
@@ -192,12 +192,8 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         // Now process each server link and extract videos using appropriate extractors
         serverLinks.forEach { (serverName, initialUrl) ->
-            var currentUrl = when {
-                initialUrl.startsWith("http") -> initialUrl
-                initialUrl.startsWith("//") -> "https:$initialUrl"
-                initialUrl.startsWith("/") -> "$baseUrl$initialUrl"
-                else -> initialUrl
-            }
+            // Use the utility function to ensure the URL is absolute
+            var currentUrl = initialUrl.toAbsoluteUrl()
 
             // --- NEW LOGIC: Handle Internal Embed Pages (Method 3 links) ---
             // If the URL is an internal DramaCool embed link, we need to follow it to find the *real* external video host.
@@ -215,12 +211,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     // *** DEBUG LOGGING: Add video entry with the real host URL found ***
                     videos.add(Video(currentUrl, "--- NEW HOST DETECTED: $realEmbedUrl ---", currentUrl))
 
-                    // Update the currentUrl to the real external host link found inside the internal embed page
-                    currentUrl = when {
-                        realEmbedUrl.startsWith("http") -> realEmbedUrl
-                        realEmbedUrl.startsWith("//") -> "https:$realEmbedUrl"
-                        else -> realEmbedUrl
-                    }
+                    // Update the currentUrl to the real external host link found inside the internal embed page, 
+                    // ensuring it is also an absolute URL.
+                    currentUrl = realEmbedUrl.toAbsoluteUrl()
+
                 } catch (e: Exception) {
                     videos.add(Video(currentUrl, "$serverName (Internal Embed Failed: ${e.message})", currentUrl))
                     return@forEach
@@ -391,6 +385,18 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             status.contains("ongoing") -> SAnime.ONGOING
             status.contains("completed") -> SAnime.COMPLETED
             else -> SAnime.UNKNOWN
+        }
+    }
+
+    /**
+     * Converts a potentially relative URL into an absolute URL using the base URL.
+     */
+    private fun String.toAbsoluteUrl(): String {
+        return when {
+            this.startsWith("http", ignoreCase = true) -> this
+            this.startsWith("//") -> "https:$this"
+            // If it's a relative path (e.g., "/embed/abc" or "embed/abc"), append it to baseUrl
+            else -> "$baseUrl/${this.trimStart('/')}"
         }
     }
 
