@@ -230,7 +230,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             try {
                 when {
-                    // StreamWish and its mirrors (VIDBASIC REMOVED)
+                    // StreamWish and its mirrors
                     currentUrl.contains("streamwish", ignoreCase = true) ||
                         currentUrl.contains("strwish", ignoreCase = true) ||
                         currentUrl.contains("wishfast", ignoreCase = true) ||
@@ -244,14 +244,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // VidHide and its mirrors (Enhanced mirror detection) (VIDBASIC ADDED)
+                    // VidHide and its mirrors (VIDBASIC REMOVED)
                     currentUrl.contains("vidhide", ignoreCase = true) ||
                         currentUrl.contains("vidhidevip", ignoreCase = true) ||
                         currentUrl.contains("vidspeeds", ignoreCase = true) ||
                         currentUrl.contains("mycloud", ignoreCase = true) ||
                         currentUrl.contains("mcloud", ignoreCase = true) ||
-                        currentUrl.contains("vcloud", ignoreCase = true) ||
-                        currentUrl.contains("vidbasic", ignoreCase = true) -> {
+                        currentUrl.contains("vcloud", ignoreCase = true) -> {
                         videos.addAll(
                             VidHideExtractor(client, headers).videosFromUrl(
                                 currentUrl,
@@ -279,9 +278,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // Filemoon and its mirrors
+                    // Filemoon and its mirrors (VIDBASIC ADDED)
                     currentUrl.contains("filemoon", ignoreCase = true) ||
-                        currentUrl.contains("moonplayer", ignoreCase = true) -> {
+                        currentUrl.contains("moonplayer", ignoreCase = true) ||
+                        currentUrl.contains("vidbasic", ignoreCase = true) -> {
                         videos.addAll(
                             FilemoonExtractor(client).videosFromUrl(currentUrl, serverName),
                         )
