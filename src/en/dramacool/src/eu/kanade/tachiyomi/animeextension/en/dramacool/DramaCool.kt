@@ -312,14 +312,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                             StreamlareExtractor(client).videosFromUrl(currentUrl, "$serverName - "),
                         )
                     }
-                    
                     // Voe (New Extractor)
                     currentUrl.contains("voe.sx", ignoreCase = true) -> {
                         videos.addAll(
                             VoeExtractor(client).videosFromUrl(currentUrl),
                         )
                     }
-
                     // For unknown servers, try to follow redirects to catch direct video streams
                     else -> {
                         val finalVideo = try {
