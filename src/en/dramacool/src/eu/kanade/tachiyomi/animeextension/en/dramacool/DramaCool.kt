@@ -268,13 +268,11 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     // Mp4Upload (Constructor only requires client, requires serverName String)
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: The compiler now expects a full signature including headers and videoNameGen for Mp4uploadExtractor.
+                        // FIX: The named parameter 'videoNameGen' is no longer recognized.
+                        // We are reverting to the simple signature used by other extractors (client in constructor, URL and serverName in function call)
+                        // to resolve the compilation error caused by continuous library updates.
                         videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(
-                                fullUrl,
-                                headers = headers, // Pass the Headers object expected by the library
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
