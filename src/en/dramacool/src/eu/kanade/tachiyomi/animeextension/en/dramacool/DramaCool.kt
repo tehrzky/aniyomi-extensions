@@ -199,7 +199,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 else -> initialUrl
             }
 
-            // --- NEW: Handle Internal Embed Pages (Method 3 links) ---
+            // --- NEW LOGIC: Handle Internal Embed Pages (Method 3 links) ---
             // If the URL is an internal DramaCool embed link, we need to follow it to find the *real* external video host.
             if (currentUrl.startsWith(baseUrl, ignoreCase = true) && currentUrl.contains("/embed/", ignoreCase = true)) {
                 try {
@@ -207,7 +207,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     val realEmbedUrl = embedDocument.selectFirst("iframe[src], iframe[data-src]")?.attr("src")?.ifBlank { embedDocument.selectFirst("iframe[data-src]")?.attr("data-src") }
 
                     if (realEmbedUrl.isNullOrBlank()) {
-                        // If we can't find the inner iframe, it's still unhandled, add it with a proper label
+                        // If we can't find the inner iframe, it's still unhandled
                         videos.add(Video(currentUrl, "$serverName (Internal Embed Page - Host not found)", currentUrl))
                         return@forEach
                     }
@@ -219,7 +219,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     currentUrl = when {
                         realEmbedUrl.startsWith("http") -> realEmbedUrl
                         realEmbedUrl.startsWith("//") -> "https:$realEmbedUrl"
-                        // This case should not happen for a final host, but for safety:
                         else -> realEmbedUrl
                     }
                 } catch (e: Exception) {
@@ -231,7 +230,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             try {
                 when {
-                    // StreamWish and its mirrors (Requires headers and videoNameGen)
+                    // StreamWish and its mirrors
                     currentUrl.contains("streamwish", ignoreCase = true) ||
                         currentUrl.contains("strwish", ignoreCase = true) ||
                         currentUrl.contains("wishfast", ignoreCase = true) ||
@@ -249,9 +248,9 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     currentUrl.contains("vidhide", ignoreCase = true) ||
                         currentUrl.contains("vidhidevip", ignoreCase = true) ||
                         currentUrl.contains("vidspeeds", ignoreCase = true) ||
-                        currentUrl.contains("mycloud", ignoreCase = true) || // Added common mirror
+                        currentUrl.contains("mycloud", ignoreCase = true) ||
                         currentUrl.contains("mcloud", ignoreCase = true) ||
-                        currentUrl.contains("vcloud", ignoreCase = true) -> { // ADDED 'vcloud' mirror
+                        currentUrl.contains("vcloud", ignoreCase = true) -> {
                         videos.addAll(
                             VidHideExtractor(client, headers).videosFromUrl(
                                 currentUrl,
@@ -260,7 +259,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // StreamTape (Requires serverName String)
+                    // StreamTape
                     currentUrl.contains("streamtape", ignoreCase = true) ||
                         currentUrl.contains("strtape", ignoreCase = true) ||
                         currentUrl.contains("stape", ignoreCase = true) -> {
@@ -269,17 +268,17 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // MixDrop and its mirrors (Enhanced mirror detection)
+                    // MixDrop and its mirrors
                     currentUrl.contains("mixdrop", ignoreCase = true) ||
                         currentUrl.contains("mixdrp", ignoreCase = true) ||
-                        currentUrl.contains("mdrama", ignoreCase = true) || // Added common mirror
-                        currentUrl.contains("mdstrm", ignoreCase = true) -> { // Added common mirror
+                        currentUrl.contains("mdrama", ignoreCase = true) ||
+                        currentUrl.contains("mdstrm", ignoreCase = true) -> {
                         videos.addAll(
                             MixDropExtractor(client).videosFromUrl(currentUrl, serverName),
                         )
                     }
 
-                    // Filemoon and its mirrors (Requires serverName String)
+                    // Filemoon and its mirrors
                     currentUrl.contains("filemoon", ignoreCase = true) ||
                         currentUrl.contains("moonplayer", ignoreCase = true) -> {
                         videos.addAll(
@@ -287,7 +286,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // DoodStream and its mirrors (Constructor only takes client, requires serverName String)
+                    // DoodStream and its mirrors
                     currentUrl.contains("dood", ignoreCase = true) ||
                         currentUrl.contains("doodstream", ignoreCase = true) ||
                         currentUrl.contains("ds2play", ignoreCase = true) ||
@@ -311,22 +310,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                             StreamlareExtractor(client).videosFromUrl(currentUrl, "$serverName - "),
                         )
                     }
-                    // Voe (New Extractor) - REMOVED due to missing dependency
-                    // currentUrl.contains("voe.sx", ignoreCase = true) -> {
-                    //     videos.addAll(
-                    //         VoeExtractor(client).videosFromUrl(currentUrl),
-                    //     )
-                    // }
-                    // For unknown servers, try to follow redirects to catch direct video streams
+                    // For unknown servers, try to follow redirects
                     else -> {
                         val finalVideo = try {
-                            // Try to follow redirects for generic server links.
-                            // If the final URL contains a video file extension, treat it as a direct stream.
                             val finalUrl = client.newCall(GET(currentUrl, headers)).execute().request.url.toString()
                             if (finalUrl.contains(".mp4", ignoreCase = true) || finalUrl.contains(".m3u8", ignoreCase = true) || finalUrl.contains(".mkv", ignoreCase = true)) {
                                 Video(finalUrl, "$serverName - Direct Stream", finalUrl)
                             } else {
-                                // If it didn't redirect to a video file, it's likely an unhandled embed page.
                                 Video(currentUrl, "$serverName (Unhandled Embed)", currentUrl)
                             }
                         } catch (e: Exception) {
