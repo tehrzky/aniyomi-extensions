@@ -20,6 +20,7 @@ import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -207,7 +208,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         fullUrl.contains("wishfast", ignoreCase = true) ||
                         fullUrl.contains("awish", ignoreCase = true) ||
                         fullUrl.contains("streamplay", ignoreCase = true) -> {
-                        videos.addAll(StreamWishExtractor(client, headers).videosFromUrl(fullUrl, serverName))
+                        videos.addAll(StreamWishExtractor(client).videosFromUrl(fullUrl) { serverName })
                     }
 
                     // VidHide and its mirrors
