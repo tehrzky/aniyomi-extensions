@@ -266,21 +266,29 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // Mp4Upload (Constructor only requires client, requires serverName String)
+                    // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: The latest library version expects 'okhttp3.Headers' as the second argument, not 'String'.
-                        // We are explicitly passing the class-level 'headers' object to satisfy the type requirement.
+                        // FIX: Restoring the full signature (url, headers, videoNameGen) for robust video object creation,
+                        // which should resolve the runtime "unrecognized file format" error by ensuring the extractor
+                        // returns a fully qualified Video object instead of a broken stream.
                         videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, headers),
+                            Mp4uploadExtractor(client).videosFromUrl(
+                                fullUrl,
+                                headers,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
                         )
                     }
 
-                    // Streamlare (Requires serverName String)
+                    // Streamlare
                     fullUrl.contains("streamlare", ignoreCase = true) ||
                         fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        // FIX: Changed to use serverName string
+                        // FIX: Adding videoNameGen lambda for robust naming, preventing runtime issues from malformed Video objects.
                         videos.addAll(
-                            StreamlareExtractor(client).videosFromUrl(fullUrl, serverName),
+                            StreamlareExtractor(client).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
                         )
                     }
 
@@ -290,8 +298,8 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     }
                 }
             } catch (e: Exception) {
-                // If extraction fails, add the embed URL as fallback
-                videos.add(Video(fullUrl, "$serverName (Embed)", fullUrl))
+                // If extraction fails, use a clearer label in the Video object
+                videos.add(Video(fullUrl, "$serverName (Extraction Failed)", fullUrl))
             }
         }
 
