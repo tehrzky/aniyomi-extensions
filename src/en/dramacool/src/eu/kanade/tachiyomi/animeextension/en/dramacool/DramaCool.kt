@@ -207,8 +207,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         fullUrl.contains("wishfast", ignoreCase = true) ||
                         fullUrl.contains("awish", ignoreCase = true) ||
                         fullUrl.contains("streamplay", ignoreCase = true) -> {
-                        // Explicitly name the lambda argument 'videoNameGen' for StreamWish to prevent
-                        // potential compilation/linting errors due to multiple overloaded functions.
+                        // StreamWish requires headers in the constructor and the name generator lambda
                         videos.addAll(
                             StreamWishExtractor(client, headers).videosFromUrl(
                                 fullUrl,
@@ -221,27 +220,50 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     fullUrl.contains("vidhide", ignoreCase = true) ||
                         fullUrl.contains("vidhidevip", ignoreCase = true) ||
                         fullUrl.contains("vidspeeds", ignoreCase = true) -> {
-                        // FIX: VidHideExtractor's videosFromUrl expects only url and serverName (2 arguments)
-                        videos.addAll(VidHideExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIX: Added headers to constructor and changed to use videoNameGen lambda
+                        videos.addAll(
+                            VidHideExtractor(client, headers).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
+                        )
                     }
 
                     // StreamTape
                     fullUrl.contains("streamtape", ignoreCase = true) ||
                         fullUrl.contains("strtape", ignoreCase = true) ||
                         fullUrl.contains("stape", ignoreCase = true) -> {
-                        videos.addAll(StreamTapeExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIX: Changed to use videoNameGen lambda
+                        videos.addAll(
+                            StreamTapeExtractor(client).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
+                        )
                     }
 
                     // MixDrop and its mirrors
                     fullUrl.contains("mixdrop", ignoreCase = true) ||
                         fullUrl.contains("mixdrp", ignoreCase = true) -> {
-                        videos.addAll(MixDropExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIX: Changed to use videoNameGen lambda
+                        videos.addAll(
+                            MixDropExtractor(client).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
+                        )
                     }
 
                     // Filemoon and its mirrors
                     fullUrl.contains("filemoon", ignoreCase = true) ||
                         fullUrl.contains("moonplayer", ignoreCase = true) -> {
-                        videos.addAll(FilemoonExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIX: Changed to use videoNameGen lambda
+                        videos.addAll(
+                            FilemoonExtractor(client).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
+                        )
                     }
 
                     // DoodStream and its mirrors
@@ -249,20 +271,36 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         fullUrl.contains("doodstream", ignoreCase = true) ||
                         fullUrl.contains("ds2play", ignoreCase = true) ||
                         fullUrl.contains("ds2video", ignoreCase = true) -> {
-                        // FIX: DoodExtractor's videosFromUrl expects only url and serverName (2 arguments)
-                        videos.addAll(DoodExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIX: Added headers to constructor and changed to use videoNameGen lambda
+                        videos.addAll(
+                            DoodExtractor(client, headers).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
+                        )
                     }
 
                     // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        videos.addAll(Mp4uploadExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIX: Changed to use videoNameGen lambda
+                        videos.addAll(
+                            Mp4uploadExtractor(client).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
+                        )
                     }
 
                     // Streamlare
                     fullUrl.contains("streamlare", ignoreCase = true) ||
                         fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        // FIX: StreamlareExtractor constructor likely expects only client
-                        videos.addAll(StreamlareExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIX: Changed to use videoNameGen lambda (constructor remains client-only)
+                        videos.addAll(
+                            StreamlareExtractor(client).videosFromUrl(
+                                fullUrl,
+                                videoNameGen = { quality -> "$serverName - $quality" },
+                            ),
+                        )
                     }
 
                     // For unknown servers, add the embed URL directly as fallback
