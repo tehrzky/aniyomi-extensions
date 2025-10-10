@@ -6,7 +6,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
-import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.ade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
@@ -180,111 +180,132 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             }
         }
 
-        // Method 3: Extract from iframe if no servers found
+        // Method 3: Extract from iframe if no servers found (This is the main player link)
         if (serverLinks.isEmpty()) {
             document.select("iframe[src], iframe[data-src]").forEach { iframe ->
                 val iframeSrc = iframe.attr("src").ifBlank { iframe.attr("data-src") }
                 if (iframeSrc.isNotBlank()) {
-                    serverLinks["Standard Server"] = iframeSrc
+                    serverLinks["Standard Server (Main Player)"] = iframeSrc
                 }
             }
         }
 
         // Now process each server link and extract videos using appropriate extractors
-        serverLinks.forEach { (serverName, url) ->
-            val fullUrl = when {
-                url.startsWith("http") -> url
-                url.startsWith("//") -> "https:$url"
-                url.startsWith("/") -> "$baseUrl$url"
-                else -> url
+        serverLinks.forEach { (serverName, initialUrl) ->
+            var currentUrl = when {
+                initialUrl.startsWith("http") -> initialUrl
+                initialUrl.startsWith("//") -> "https:$initialUrl"
+                initialUrl.startsWith("/") -> "$baseUrl$initialUrl"
+                else -> initialUrl
             }
+
+            // --- NEW: Handle Internal Embed Pages (Method 3 links) ---
+            // If the URL is an internal DramaCool embed link, we need to follow it to find the *real* external video host.
+            if (currentUrl.startsWith(baseUrl, ignoreCase = true) && currentUrl.contains("/embed/", ignoreCase = true)) {
+                try {
+                    val embedDocument = client.newCall(GET(currentUrl, headers)).execute().asJsoup()
+                    val realEmbedUrl = embedDocument.selectFirst("iframe[src], iframe[data-src]")?.attr("src")?.ifBlank { embedDocument.selectFirst("iframe[data-src]")?.attr("data-src") }
+                    
+                    if (realEmbedUrl.isNullOrBlank()) {
+                        // If we can't find the inner iframe, it's still unhandled, add it with a proper label
+                        videos.add(Video(currentUrl, "$serverName (Internal Embed Page - Host not found)", currentUrl))
+                        return@forEach
+                    }
+
+                    // Update the currentUrl to the real external host link found inside the internal embed page
+                    currentUrl = when {
+                        realEmbedUrl.startsWith("http") -> realEmbedUrl
+                        realEmbedUrl.startsWith("//") -> "https:$realEmbedUrl"
+                        // This case should not happen for a final host, but for safety:
+                        else -> realEmbedUrl
+                    }
+                    
+                } catch (e: Exception) {
+                    videos.add(Video(currentUrl, "$serverName (Internal Embed Failed: ${e.message})", currentUrl))
+                    return@forEach
+                }
+            }
+            // --- END NEW LOGIC ---
 
             try {
                 when {
                     // StreamWish and its mirrors (Requires headers and videoNameGen)
-                    fullUrl.contains("streamwish", ignoreCase = true) ||
-                        fullUrl.contains("strwish", ignoreCase = true) ||
-                        fullUrl.contains("wishfast", ignoreCase = true) ||
-                        fullUrl.contains("awish", ignoreCase = true) ||
-                        fullUrl.contains("streamplay", ignoreCase = true) -> {
+                    currentUrl.contains("streamwish", ignoreCase = true) ||
+                        currentUrl.contains("strwish", ignoreCase = true) ||
+                        currentUrl.contains("wishfast", ignoreCase = true) ||
+                        currentUrl.contains("awish", ignoreCase = true) ||
+                        currentUrl.contains("streamplay", ignoreCase = true) -> {
                         videos.addAll(
                             StreamWishExtractor(client, headers).videosFromUrl(
-                                fullUrl,
+                                currentUrl,
                                 videoNameGen = { quality -> "$serverName - $quality" },
                             ),
                         )
                     }
 
                     // VidHide and its mirrors (Enhanced mirror detection)
-                    fullUrl.contains("vidhide", ignoreCase = true) ||
-                        fullUrl.contains("vidhidevip", ignoreCase = true) ||
-                        fullUrl.contains("vidspeeds", ignoreCase = true) ||
-                        fullUrl.contains("mycloud", ignoreCase = true) || // Added common mirror
-                        fullUrl.contains("mcloud", ignoreCase = true) -> { // Added common mirror
+                    currentUrl.contains("vidhide", ignoreCase = true) ||
+                        currentUrl.contains("vidhidevip", ignoreCase = true) ||
+                        currentUrl.contains("vidspeeds", ignoreCase = true) ||
+                        currentUrl.contains("mycloud", ignoreCase = true) || // Added common mirror
+                        currentUrl.contains("mcloud", ignoreCase = true) -> { // Added common mirror
                         videos.addAll(
                             VidHideExtractor(client, headers).videosFromUrl(
-                                fullUrl,
+                                currentUrl,
                                 videoNameGen = { quality -> "$serverName - $quality" },
                             ),
                         )
                     }
 
                     // StreamTape (Requires serverName String)
-                    fullUrl.contains("streamtape", ignoreCase = true) ||
-                        fullUrl.contains("strtape", ignoreCase = true) ||
-                        fullUrl.contains("stape", ignoreCase = true) -> {
-                        // FIX: Changed to use serverName string
+                    currentUrl.contains("streamtape", ignoreCase = true) ||
+                        currentUrl.contains("strtape", ignoreCase = true) ||
+                        currentUrl.contains("stape", ignoreCase = true) -> {
                         videos.addAll(
-                            StreamTapeExtractor(client).videosFromUrl(fullUrl, serverName),
+                            StreamTapeExtractor(client).videosFromUrl(currentUrl, serverName),
                         )
                     }
 
                     // MixDrop and its mirrors (Enhanced mirror detection)
-                    fullUrl.contains("mixdrop", ignoreCase = true) ||
-                        fullUrl.contains("mixdrp", ignoreCase = true) ||
-                        fullUrl.contains("mdrama", ignoreCase = true) || // Added common mirror
-                        fullUrl.contains("mdstrm", ignoreCase = true) -> { // Added common mirror
-                        // FIX: Changed to use serverName string
+                    currentUrl.contains("mixdrop", ignoreCase = true) ||
+                        currentUrl.contains("mixdrp", ignoreCase = true) ||
+                        currentUrl.contains("mdrama", ignoreCase = true) || // Added common mirror
+                        currentUrl.contains("mdstrm", ignoreCase = true) -> { // Added common mirror
                         videos.addAll(
-                            MixDropExtractor(client).videosFromUrl(fullUrl, serverName),
+                            MixDropExtractor(client).videosFromUrl(currentUrl, serverName),
                         )
                     }
 
                     // Filemoon and its mirrors (Requires serverName String)
-                    fullUrl.contains("filemoon", ignoreCase = true) ||
-                        fullUrl.contains("moonplayer", ignoreCase = true) -> {
-                        // FIX: Changed to use serverName string
+                    currentUrl.contains("filemoon", ignoreCase = true) ||
+                        currentUrl.contains("moonplayer", ignoreCase = true) -> {
                         videos.addAll(
-                            FilemoonExtractor(client).videosFromUrl(fullUrl, serverName),
+                            FilemoonExtractor(client).videosFromUrl(currentUrl, serverName),
                         )
                     }
 
                     // DoodStream and its mirrors (Constructor only takes client, requires serverName String)
-                    fullUrl.contains("dood", ignoreCase = true) ||
-                        fullUrl.contains("doodstream", ignoreCase = true) ||
-                        fullUrl.contains("ds2play", ignoreCase = true) ||
-                        fullUrl.contains("ds2video", ignoreCase = true) -> {
-                        // FIX: Removed headers from constructor, fixed videosFromUrl to use serverName string
+                    currentUrl.contains("dood", ignoreCase = true) ||
+                        currentUrl.contains("doodstream", ignoreCase = true) ||
+                        currentUrl.contains("ds2play", ignoreCase = true) ||
+                        currentUrl.contains("ds2video", ignoreCase = true) -> {
                         videos.addAll(
-                            DoodExtractor(client).videosFromUrl(fullUrl, serverName),
+                            DoodExtractor(client).videosFromUrl(currentUrl, serverName),
                         )
                     }
 
                     // Mp4Upload
-                    fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: Reverting argument order to (url, headers, videoName) based on compiler error
-                        // that requests Headers in the second position and String in the third.
+                    currentUrl.contains("mp4upload", ignoreCase = true) -> {
                         videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, headers, "$serverName - "),
+                            Mp4uploadExtractor(client).videosFromUrl(currentUrl, headers, "$serverName - "),
                         )
                     }
 
                     // Streamlare
-                    fullUrl.contains("streamlare", ignoreCase = true) ||
-                        fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        // FIX: Reverted to expected signature: (url, videoName) to fix compilation.
+                    currentUrl.contains("streamlare", ignoreCase = true) ||
+                        currentUrl.contains("slwatch", ignoreCase = true) -> {
                         videos.addAll(
-                            StreamlareExtractor(client).videosFromUrl(fullUrl, "$serverName - "),
+                            StreamlareExtractor(client).videosFromUrl(currentUrl, "$serverName - "),
                         )
                     }
 
@@ -293,22 +314,22 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         val finalVideo = try {
                             // Try to follow redirects for generic server links.
                             // If the final URL contains a video file extension, treat it as a direct stream.
-                            val finalUrl = client.newCall(GET(fullUrl, headers)).execute().request.url.toString()
+                            val finalUrl = client.newCall(GET(currentUrl, headers)).execute().request.url.toString()
                             if (finalUrl.contains(".mp4", ignoreCase = true) || finalUrl.contains(".m3u8", ignoreCase = true) || finalUrl.contains(".mkv", ignoreCase = true)) {
                                 Video(finalUrl, "$serverName - Direct Stream", finalUrl)
                             } else {
                                 // If it didn't redirect to a video file, it's likely an unhandled embed page.
-                                Video(fullUrl, "$serverName (Unhandled Embed)", fullUrl)
+                                Video(currentUrl, "$serverName (Unhandled Embed)", currentUrl)
                             }
                         } catch (e: Exception) {
-                            Video(fullUrl, "$serverName (Connection Error)", fullUrl)
+                            Video(currentUrl, "$serverName (Connection Error)", currentUrl)
                         }
                         videos.add(finalVideo)
                     }
                 }
             } catch (e: Exception) {
                 // If extraction fails for a known server, include the exception message for better debugging
-                videos.add(Video(fullUrl, "$serverName (Extraction Failed: ${e.message})", fullUrl))
+                videos.add(Video(currentUrl, "$serverName (Extraction Failed: ${e.message})", currentUrl))
             }
         }
 
