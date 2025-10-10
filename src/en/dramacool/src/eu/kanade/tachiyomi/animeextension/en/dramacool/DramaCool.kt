@@ -207,33 +207,58 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         fullUrl.contains("wishfast", ignoreCase = true) ||
                         fullUrl.contains("awish", ignoreCase = true) ||
                         fullUrl.contains("streamplay", ignoreCase = true) -> {
-                        videos.addAll(StreamWishExtractor(client, headers).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added headers parameter and proper quality selector
+                        videos.addAll(StreamWishExtractor(client, headers).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // VidHide and its mirrors
                     fullUrl.contains("vidhide", ignoreCase = true) ||
                         fullUrl.contains("vidhidevip", ignoreCase = true) ||
                         fullUrl.contains("vidspeeds", ignoreCase = true) -> {
-                        videos.addAll(VidHideExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added proper quality selector
+                        videos.addAll(VidHideExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // StreamTape
                     fullUrl.contains("streamtape", ignoreCase = true) ||
                         fullUrl.contains("strtape", ignoreCase = true) ||
                         fullUrl.contains("stape", ignoreCase = true) -> {
-                        videos.addAll(StreamTapeExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added proper quality selector
+                        videos.addAll(StreamTapeExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // MixDrop and its mirrors
                     fullUrl.contains("mixdrop", ignoreCase = true) ||
                         fullUrl.contains("mixdrp", ignoreCase = true) -> {
-                        videos.addAll(MixDropExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added proper quality selector
+                        videos.addAll(MixDropExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // Filemoon and its mirrors
                     fullUrl.contains("filemoon", ignoreCase = true) ||
                         fullUrl.contains("moonplayer", ignoreCase = true) -> {
-                        videos.addAll(FilemoonExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added proper quality selector
+                        videos.addAll(FilemoonExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // DoodStream and its mirrors
@@ -241,18 +266,33 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         fullUrl.contains("doodstream", ignoreCase = true) ||
                         fullUrl.contains("ds2play", ignoreCase = true) ||
                         fullUrl.contains("ds2video", ignoreCase = true) -> {
-                        videos.addAll(DoodExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added proper quality selector
+                        videos.addAll(DoodExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        videos.addAll(Mp4uploadExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added proper quality selector
+                        videos.addAll(Mp4uploadExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // Streamlare
                     fullUrl.contains("streamlare", ignoreCase = true) ||
                         fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        videos.addAll(StreamlareExtractor(client).videosFromUrl(fullUrl, serverName))
+                        // FIXED: Added proper quality selector
+                        videos.addAll(StreamlareExtractor(client).videosFromUrl(
+                            url = fullUrl,
+                            prefix = serverName,
+                            qualitySelector = { it.quality.contains("1080") || it.quality.contains("720") }
+                        ))
                     }
 
                     // For unknown servers, add the embed URL directly as fallback
