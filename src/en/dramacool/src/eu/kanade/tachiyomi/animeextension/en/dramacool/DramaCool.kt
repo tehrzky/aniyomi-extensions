@@ -266,11 +266,11 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // Mp4Upload (Constructor now requires client and headers, requires serverName String)
+                    // Mp4Upload (Constructor only requires client, requires serverName String)
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: Added headers to constructor, fixed videosFromUrl to use serverName string
+                        // FIX: Removed headers from constructor, using client only
                         videos.addAll(
-                            Mp4uploadExtractor(client, headers).videosFromUrl(fullUrl, serverName),
+                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
