@@ -230,12 +230,13 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             try {
                 when {
-                    // StreamWish and its mirrors
+                    // StreamWish and its mirrors (NOW INCLUDING VIDBASIC.TOP)
                     currentUrl.contains("streamwish", ignoreCase = true) ||
                         currentUrl.contains("strwish", ignoreCase = true) ||
                         currentUrl.contains("wishfast", ignoreCase = true) ||
                         currentUrl.contains("awish", ignoreCase = true) ||
-                        currentUrl.contains("streamplay", ignoreCase = true) -> {
+                        currentUrl.contains("streamplay", ignoreCase = true) ||
+                        currentUrl.contains("vidbasic", ignoreCase = true) -> {
                         videos.addAll(
                             StreamWishExtractor(client, headers).videosFromUrl(
                                 currentUrl,
