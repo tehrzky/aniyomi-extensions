@@ -221,6 +221,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     fullUrl.contains("vidhide", ignoreCase = true) ||
                         fullUrl.contains("vidhidevip", ignoreCase = true) ||
                         fullUrl.contains("vidspeeds", ignoreCase = true) -> {
+                        // FIX: VidHideExtractor's videosFromUrl expects only url and serverName (2 arguments)
                         videos.addAll(VidHideExtractor(client).videosFromUrl(fullUrl, serverName))
                     }
 
@@ -248,6 +249,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         fullUrl.contains("doodstream", ignoreCase = true) ||
                         fullUrl.contains("ds2play", ignoreCase = true) ||
                         fullUrl.contains("ds2video", ignoreCase = true) -> {
+                        // FIX: DoodExtractor's videosFromUrl expects only url and serverName (2 arguments)
                         videos.addAll(DoodExtractor(client).videosFromUrl(fullUrl, serverName))
                     }
 
@@ -259,7 +261,8 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     // Streamlare
                     fullUrl.contains("streamlare", ignoreCase = true) ||
                         fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        videos.addAll(StreamlareExtractor(client, headers).videosFromUrl(fullUrl, serverName))
+                        // FIX: StreamlareExtractor constructor likely expects only client
+                        videos.addAll(StreamlareExtractor(client).videosFromUrl(fullUrl, serverName))
                     }
 
                     // For unknown servers, add the embed URL directly as fallback
