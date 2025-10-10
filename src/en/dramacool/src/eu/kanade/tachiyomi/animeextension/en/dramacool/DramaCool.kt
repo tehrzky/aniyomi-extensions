@@ -61,7 +61,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun popularAnimeNextPageSelector(): String? = null
 
-    // =============================== Latest ===============================
+    // =============================== Latest = ===============================
     override fun latestUpdatesRequest(page: Int): Request {
         return GET("$baseUrl/recently-added")
     }
