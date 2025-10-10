@@ -272,7 +272,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     // Mp4Upload
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: Reverted to expected signature: (url, videoName, headers) to fix compilation.
+                        // FIX: Swapped the position of headers and videoName arguments to match the expected signature: (url, videoName, headers).
                         videos.addAll(
                             Mp4uploadExtractor(client).videosFromUrl(fullUrl, "$serverName - ", headers),
                         )
