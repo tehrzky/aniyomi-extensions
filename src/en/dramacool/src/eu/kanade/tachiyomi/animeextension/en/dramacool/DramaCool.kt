@@ -18,7 +18,6 @@ import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
-import eu.kanade.tachiyomi.lib.voeextractor.VoeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
@@ -312,12 +311,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                             StreamlareExtractor(client).videosFromUrl(currentUrl, "$serverName - "),
                         )
                     }
-                    // Voe (New Extractor)
-                    currentUrl.contains("voe.sx", ignoreCase = true) -> {
-                        videos.addAll(
-                            VoeExtractor(client).videosFromUrl(currentUrl),
-                        )
-                    }
+                    // Voe (New Extractor) - REMOVED due to missing dependency
+                    // currentUrl.contains("voe.sx", ignoreCase = true) -> {
+                    //     videos.addAll(
+                    //         VoeExtractor(client).videosFromUrl(currentUrl),
+                    //     )
+                    // }
                     // For unknown servers, try to follow redirects to catch direct video streams
                     else -> {
                         val finalVideo = try {
