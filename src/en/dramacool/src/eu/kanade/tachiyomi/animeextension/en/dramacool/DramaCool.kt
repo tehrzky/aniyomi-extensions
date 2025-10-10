@@ -222,7 +222,6 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         // This case should not happen for a final host, but for safety:
                         else -> realEmbedUrl
                     }
-
                 } catch (e: Exception) {
                     videos.add(Video(currentUrl, "$serverName (Internal Embed Failed: ${e.message})", currentUrl))
                     return@forEach
