@@ -6,7 +6,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
-import eu.ade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
@@ -45,7 +45,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    // ============================== Popular = ===============================
+    // ============================== Popular ===============================
     override fun popularAnimeRequest(page: Int): Request {
         return GET("$baseUrl/most-popular-drama")
     }
@@ -205,12 +205,15 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 try {
                     val embedDocument = client.newCall(GET(currentUrl, headers)).execute().asJsoup()
                     val realEmbedUrl = embedDocument.selectFirst("iframe[src], iframe[data-src]")?.attr("src")?.ifBlank { embedDocument.selectFirst("iframe[data-src]")?.attr("data-src") }
-                    
+
                     if (realEmbedUrl.isNullOrBlank()) {
                         // If we can't find the inner iframe, it's still unhandled, add it with a proper label
                         videos.add(Video(currentUrl, "$serverName (Internal Embed Page - Host not found)", currentUrl))
                         return@forEach
                     }
+
+                    // *** DEBUG LOGGING: Add video entry with the real host URL found ***
+                    videos.add(Video(currentUrl, "$serverName (DEBUG: Found Host URL $realEmbedUrl)", currentUrl))
 
                     // Update the currentUrl to the real external host link found inside the internal embed page
                     currentUrl = when {
@@ -219,7 +222,7 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         // This case should not happen for a final host, but for safety:
                         else -> realEmbedUrl
                     }
-                    
+
                 } catch (e: Exception) {
                     videos.add(Video(currentUrl, "$serverName (Internal Embed Failed: ${e.message})", currentUrl))
                     return@forEach
