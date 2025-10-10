@@ -139,23 +139,32 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
         val serverLinks = mutableMapOf<String, String>()
-
-        // Debug: Add a video showing what page we're processing
         val pageUrl = response.request.url.toString()
-        videos.add(Video(pageUrl, "DEBUG: Processing page - $pageUrl", pageUrl))
+        val debugInfo = mutableListOf<String>()
 
-        document.select(".muti_link li, ul.muti_link li").forEach { server ->
+        // Method 1: Extract from .muti_link li elements
+        debugInfo.add("Method 1: Checking .muti_link li")
+        val method1Elements = document.select(".muti_link li, ul.muti_link li")
+        debugInfo.add("Found ${method1Elements.size} elements with Method 1")
+        
+        method1Elements.forEach { server ->
             val serverName = server.ownText().trim().takeIf { it.isNotBlank() }
                 ?: server.text().trim()
             val videoUrl = server.attr("data-video")
 
             if (videoUrl.isNotBlank() && serverName.isNotBlank()) {
                 serverLinks[serverName] = videoUrl
+                debugInfo.add("M1: $serverName -> ${videoUrl.take(50)}...")
             }
         }
 
+        // Method 2: Try alternative server list selectors
         if (serverLinks.isEmpty()) {
-            document.select(".server-list li, ul.list-server-items li, .anime_muti_link li").forEach { server ->
+            debugInfo.add("Method 2: Checking alternative selectors")
+            val method2Elements = document.select(".server-list li, ul.list-server-items li, .anime_muti_link li")
+            debugInfo.add("Found ${method2Elements.size} elements with Method 2")
+            
+            method2Elements.forEach { server ->
                 val serverName = server.selectFirst("a")?.text()?.trim()
                     ?: server.ownText().trim()
                     ?: "Server"
@@ -173,24 +182,69 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                 if (videoUrl.isNotBlank()) {
                     serverLinks[serverName] = videoUrl
+                    debugInfo.add("M2: $serverName -> ${videoUrl.take(50)}...")
                 }
             }
         }
 
+        // Method 3: Extract from iframe if no servers found
         if (serverLinks.isEmpty()) {
-            document.select("iframe[src], iframe[data-src]").forEach { iframe ->
+            debugInfo.add("Method 3: Checking iframes")
+            val iframes = document.select("iframe[src], iframe[data-src]")
+            debugInfo.add("Found ${iframes.size} iframes")
+            
+            iframes.forEach { iframe ->
                 val iframeSrc = iframe.attr("src").ifBlank { iframe.attr("data-src") }
                 if (iframeSrc.isNotBlank()) {
                     serverLinks["Standard Server (Main Player)"] = iframeSrc
+                    debugInfo.add("M3: iframe -> ${iframeSrc.take(50)}...")
                 }
             }
         }
 
-        // Debug: Add info about servers found
+        // Method 4: Check for common DramaCool patterns
         if (serverLinks.isEmpty()) {
-            videos.add(Video(pageUrl, "DEBUG: No server links found on page", pageUrl))
-        } else {
-            videos.add(Video(pageUrl, "DEBUG: Found ${serverLinks.size} server(s): ${serverLinks.keys.joinToString()}", pageUrl))
+            debugInfo.add("Method 4: Checking common patterns")
+            
+            // Try to find any element with data-video attribute
+            document.select("[data-video]").forEach { el ->
+                val url = el.attr("data-video")
+                if (url.isNotBlank()) {
+                    val name = el.text().trim().ifBlank { "Unknown Server" }
+                    serverLinks[name] = url
+                    debugInfo.add("M4: $name -> ${url.take(50)}...")
+                }
+            }
+        }
+
+        // Method 5: HTML structure analysis (if still no servers found)
+        if (serverLinks.isEmpty()) {
+            debugInfo.add("Method 5: HTML Structure Analysis")
+            
+            // Check what ul/li elements exist
+            val allUls = document.select("ul")
+            debugInfo.add("Found ${allUls.size} <ul> elements on page")
+            
+            allUls.take(10).forEachIndexed { idx, ul ->
+                val ulClass = ul.className().ifBlank { "no-class" }
+                val ulId = ul.id().ifBlank { "no-id" }
+                val liCount = ul.select("li").size
+                debugInfo.add("UL[$idx]: class='$ulClass' id='$ulId' lis=$liCount")
+                
+                // Show first few li items
+                ul.select("li").take(3).forEachIndexed { liIdx, li ->
+                    val attrs = li.attributes().asList()
+                        .filter { it.key.isNotBlank() && it.value.isNotBlank() }
+                        .joinToString(", ") { "${it.key}='${it.value.take(30)}...'" }
+                    debugInfo.add("  LI[$liIdx]: $attrs")
+                }
+            }
+        }
+
+        // Add debug videos
+        videos.add(Video(pageUrl, "DEBUG: Processing - ${pageUrl.substringAfterLast("/")}", pageUrl))
+        debugInfo.forEach { info ->
+            videos.add(Video(pageUrl, "DEBUG: $info", pageUrl))
         }
 
         serverLinks.forEach { (serverName, initialUrl) ->
