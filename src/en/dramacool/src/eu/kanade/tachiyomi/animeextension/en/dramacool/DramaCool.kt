@@ -268,11 +268,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                     // Mp4Upload (Constructor only requires client, requires serverName String)
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: The named parameter 'videoNameGen' is no longer recognized.
-                        // We are reverting to the simple signature used by other extractors (client in constructor, URL and serverName in function call)
-                        // to resolve the compilation error caused by continuous library updates.
+                        // FIX: The latest library version expects 'okhttp3.Headers' as the second argument, not 'String'.
+                        // We are explicitly passing the class-level 'headers' object to satisfy the type requirement.
                         videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, serverName),
+                            Mp4uploadExtractor(client).videosFromUrl(fullUrl, headers),
                         )
                     }
 
