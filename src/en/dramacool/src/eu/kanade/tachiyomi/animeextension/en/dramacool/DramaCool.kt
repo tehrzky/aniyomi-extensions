@@ -201,13 +201,12 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
             try {
                 when {
-                    // StreamWish and its mirrors
+                    // StreamWish and its mirrors (Requires headers and videoNameGen)
                     fullUrl.contains("streamwish", ignoreCase = true) ||
                         fullUrl.contains("strwish", ignoreCase = true) ||
                         fullUrl.contains("wishfast", ignoreCase = true) ||
                         fullUrl.contains("awish", ignoreCase = true) ||
                         fullUrl.contains("streamplay", ignoreCase = true) -> {
-                        // StreamWish requires headers in the constructor and the name generator lambda
                         videos.addAll(
                             StreamWishExtractor(client, headers).videosFromUrl(
                                 fullUrl,
@@ -216,11 +215,10 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // VidHide and its mirrors
+                    // VidHide and its mirrors (Requires headers and videoNameGen)
                     fullUrl.contains("vidhide", ignoreCase = true) ||
                         fullUrl.contains("vidhidevip", ignoreCase = true) ||
                         fullUrl.contains("vidspeeds", ignoreCase = true) -> {
-                        // FIX: Added headers to constructor and changed to use videoNameGen lambda
                         videos.addAll(
                             VidHideExtractor(client, headers).videosFromUrl(
                                 fullUrl,
@@ -229,77 +227,59 @@ class DramaCool : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                         )
                     }
 
-                    // StreamTape
+                    // StreamTape (Requires serverName String)
                     fullUrl.contains("streamtape", ignoreCase = true) ||
                         fullUrl.contains("strtape", ignoreCase = true) ||
                         fullUrl.contains("stape", ignoreCase = true) -> {
-                        // FIX: Changed to use videoNameGen lambda
+                        // FIX: Changed to use serverName string
                         videos.addAll(
-                            StreamTapeExtractor(client).videosFromUrl(
-                                fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            StreamTapeExtractor(client).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
-                    // MixDrop and its mirrors
+                    // MixDrop and its mirrors (Requires serverName String)
                     fullUrl.contains("mixdrop", ignoreCase = true) ||
                         fullUrl.contains("mixdrp", ignoreCase = true) -> {
-                        // FIX: Changed to use videoNameGen lambda
+                        // FIX: Changed to use serverName string
                         videos.addAll(
-                            MixDropExtractor(client).videosFromUrl(
-                                fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            MixDropExtractor(client).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
-                    // Filemoon and its mirrors
+                    // Filemoon and its mirrors (Requires serverName String)
                     fullUrl.contains("filemoon", ignoreCase = true) ||
                         fullUrl.contains("moonplayer", ignoreCase = true) -> {
-                        // FIX: Changed to use videoNameGen lambda
+                        // FIX: Changed to use serverName string
                         videos.addAll(
-                            FilemoonExtractor(client).videosFromUrl(
-                                fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            FilemoonExtractor(client).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
-                    // DoodStream and its mirrors
+                    // DoodStream and its mirrors (Constructor only takes client, requires serverName String)
                     fullUrl.contains("dood", ignoreCase = true) ||
                         fullUrl.contains("doodstream", ignoreCase = true) ||
                         fullUrl.contains("ds2play", ignoreCase = true) ||
                         fullUrl.contains("ds2video", ignoreCase = true) -> {
-                        // FIX: Added headers to constructor and changed to use videoNameGen lambda
+                        // FIX: Removed headers from constructor, fixed videosFromUrl to use serverName string
                         videos.addAll(
-                            DoodExtractor(client, headers).videosFromUrl(
-                                fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            DoodExtractor(client).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
-                    // Mp4Upload
+                    // Mp4Upload (Constructor now requires client and headers, requires serverName String)
                     fullUrl.contains("mp4upload", ignoreCase = true) -> {
-                        // FIX: Changed to use videoNameGen lambda
+                        // FIX: Added headers to constructor, fixed videosFromUrl to use serverName string
                         videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(
-                                fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            Mp4uploadExtractor(client, headers).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
-                    // Streamlare
+                    // Streamlare (Requires serverName String)
                     fullUrl.contains("streamlare", ignoreCase = true) ||
                         fullUrl.contains("slwatch", ignoreCase = true) -> {
-                        // FIX: Changed to use videoNameGen lambda (constructor remains client-only)
+                        // FIX: Changed to use serverName string
                         videos.addAll(
-                            StreamlareExtractor(client).videosFromUrl(
-                                fullUrl,
-                                videoNameGen = { quality -> "$serverName - $quality" },
-                            ),
+                            StreamlareExtractor(client).videosFromUrl(fullUrl, serverName),
                         )
                     }
 
