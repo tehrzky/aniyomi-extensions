@@ -6,6 +6,15 @@ ext {
 
 apply from: "$rootDir/common.gradle"
 
+android {
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+
 dependencies {
     // All extractors based on your lib folder
     implementation project(':lib:streamwish-extractor')
