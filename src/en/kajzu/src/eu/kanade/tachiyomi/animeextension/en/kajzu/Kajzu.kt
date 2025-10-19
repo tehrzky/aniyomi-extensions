@@ -112,18 +112,20 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val td = row.selectFirst("td")?.text() ?: return@forEach
 
                 when {
-                    th.contains("Category", ignoreCase = true) ||
-                            th.contains("Genre", ignoreCase = true) -> {
-                        val genreLinks = row.select("a")
-                        if (genreLinks.isNotEmpty()) {
-                            genre = genreLinks.joinToString(", ") { it.text() }
-                        }
-                    }
+                    th.contains("Category", ignoreCase = true) -> handleCategory(row)
+                    th.contains("Genre", ignoreCase = true) -> handleCategory(row)
                     th.contains("Status", ignoreCase = true) -> {
                         status = parseStatus(td)
                     }
                 }
             }
+        }
+    }
+
+    private fun SAnime.handleCategory(row: Element) {
+        val genreLinks = row.select("a")
+        if (genreLinks.isNotEmpty()) {
+            genre = genreLinks.joinToString(", ") { it.text() }
         }
     }
 
@@ -176,55 +178,30 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         try {
             when {
-                videoUrl.contains("streamwish", ignoreCase = true) ||
-                        videoUrl.contains("strwish", ignoreCase = true) -> {
-                    videos.addAll(
-                        StreamWishExtractor(client).videosFromUrl(videoUrl),
-                    )
+                isStreamWish(videoUrl) -> {
+                    videos.addAll(StreamWishExtractor(client).videosFromUrl(videoUrl))
                 }
-
-                videoUrl.contains("vidhide", ignoreCase = true) -> {
-                    videos.addAll(
-                        VidHideExtractor(client).videosFromUrl(videoUrl),
-                    )
+                isVidHide(videoUrl) -> {
+                    videos.addAll(VidHideExtractor(client).videosFromUrl(videoUrl))
                 }
-
                 videoUrl.contains("streamtape", ignoreCase = true) -> {
-                    videos.addAll(
-                        StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape"),
-                    )
+                    videos.addAll(StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape"))
                 }
-
                 videoUrl.contains("mixdrop", ignoreCase = true) -> {
-                    videos.addAll(
-                        MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop"),
-                    )
+                    videos.addAll(MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop"))
                 }
-
                 videoUrl.contains("filemoon", ignoreCase = true) -> {
-                    videos.addAll(
-                        FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon"),
-                    )
+                    videos.addAll(FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon"))
                 }
-
                 videoUrl.contains("dood", ignoreCase = true) -> {
-                    videos.addAll(
-                        DoodExtractor(client).videosFromUrl(videoUrl, "Dood"),
-                    )
+                    videos.addAll(DoodExtractor(client).videosFromUrl(videoUrl, "Dood"))
                 }
-
                 videoUrl.contains("mp4upload", ignoreCase = true) -> {
-                    videos.addAll(
-                        Mp4uploadExtractor(client).videosFromUrl(videoUrl, headers, "MP4Upload - "),
-                    )
+                    videos.addAll(Mp4uploadExtractor(client).videosFromUrl(videoUrl, headers, "MP4Upload - "))
                 }
-
                 videoUrl.contains("streamlare", ignoreCase = true) -> {
-                    videos.addAll(
-                        StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - "),
-                    )
+                    videos.addAll(StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - "))
                 }
-
                 else -> {
                     videos.add(Video(videoUrl, "Direct Stream", videoUrl))
                 }
@@ -238,6 +215,15 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         } else {
             videos
         }
+    }
+
+    private fun isStreamWish(url: String): Boolean {
+        return url.contains("streamwish", ignoreCase = true) ||
+                url.contains("strwish", ignoreCase = true)
+    }
+
+    private fun isVidHide(url: String): Boolean {
+        return url.contains("vidhide", ignoreCase = true)
     }
 
     override fun videoListSelector(): String = throw UnsupportedOperationException()
