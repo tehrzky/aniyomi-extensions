@@ -81,16 +81,16 @@ class Tokuzilla : ParsedAnimeHttpSource() {
         try {
             val response = client.newCall(GET(url, headers)).execute()
             val html = response.use { it.body.string() }
-            
+
             // Look for common video file patterns
             val videoPatterns = listOf(
                 """https?://[^"'\s]*\.mp4[^"'\s]*""",
                 """https?://[^"'\s]*\.m3u8[^"'\s]*""",
                 """https?://[^"'\s]*\.mkv[^"'\s]*""",
                 """file:\s*["']([^"']+)["']""",
-                """src:\s*["']([^"']+)["']"""
+                """src:\s*["']([^"']+)["']""",
             )
-            
+
             videoPatterns.forEach { pattern ->
                 val regex = pattern.toRegex()
                 val matches = regex.findAll(html)
