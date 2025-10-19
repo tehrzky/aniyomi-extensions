@@ -23,29 +23,29 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Tokuzilla extension (Debug)
+      - name: Build Tokuzilla extension (Debug - Unsigned)
         run: |
           ./gradlew src:en:tokuzilla:assembleDebug
 
       - name: Find and upload APK
         run: |
-          # Find the APK file - look for debug builds
-          APK_FILE=$(find . -name "*tokuzilla*debug*.apk" -o -name "*Tokuzilla*debug*.apk" | head -1)
+          # Find the debug APK file
+          APK_FILE=$(find . -name "*tokuzilla*debug*.apk" | head -1)
           if [ -z "$APK_FILE" ]; then
             # Try alternative patterns
-            APK_FILE=$(find . -name "*tokuzilla*.apk" -o -name "*Tokuzilla*.apk" | head -1)
+            APK_FILE=$(find . -name "*tokuzilla*.apk" | head -1)
           fi
           
           echo "Found APK: $APK_FILE"
 
-          # Copy to root directory with simple name
           if [ -z "$APK_FILE" ]; then
-            echo "APK not found!"
+            echo "APK not found! Available APK files:"
             find . -name "*.apk" -type f
             exit 1
           fi
 
           cp "$APK_FILE" ./tokuzilla-extension.apk
+          echo "APK ready: ./tokuzilla-extension.apk"
           ls -lh ./tokuzilla-extension.apk
 
       - name: Upload APK
