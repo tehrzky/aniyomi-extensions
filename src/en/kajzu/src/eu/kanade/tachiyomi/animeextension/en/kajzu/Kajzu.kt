@@ -37,8 +37,8 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    // Add proper headers to avoid 403 errors
-    override val headers: Headers by lazy {
+    // Add proper headers without overriding the final property
+    private val customHeaders: Headers by lazy {
         Headers.headersOf(
             "User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
@@ -55,8 +55,16 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         )
     }
 
+    // Override the getter for headers to use our custom headers
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder().apply {
+        customHeaders.forEach { header ->
+            add(header.first, header.second)
+        }
+    }
+
     // ============================== Popular ===============================
     override fun popularAnimeRequest(page: Int): Request {
+        // Popular shows are in Kamen Rider section
         return GET("$baseUrl/kamen-rider", headers)
     }
 
@@ -200,37 +208,37 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 videoUrl.contains("streamwish", ignoreCase = true) ||
                     videoUrl.contains("strwish", ignoreCase = true) -> {
                     videos.addAll(
-                        StreamWishExtractor(client, videoHeaders).videosFromUrl(videoUrl, referer = response.request.url.toString()),
+                        StreamWishExtractor(client, videoHeaders).videosFromUrl(videoUrl),
                     )
                 }
 
                 videoUrl.contains("vidhide", ignoreCase = true) -> {
                     videos.addAll(
-                        VidHideExtractor(client, videoHeaders).videosFromUrl(videoUrl, referer = response.request.url.toString()),
+                        VidHideExtractor(client, videoHeaders).videosFromUrl(videoUrl),
                     )
                 }
 
                 videoUrl.contains("streamtape", ignoreCase = true) -> {
                     videos.addAll(
-                        StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape", referer = response.request.url.toString()),
+                        StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape"),
                     )
                 }
 
                 videoUrl.contains("mixdrop", ignoreCase = true) -> {
                     videos.addAll(
-                        MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop", referer = response.request.url.toString()),
+                        MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop"),
                     )
                 }
 
                 videoUrl.contains("filemoon", ignoreCase = true) -> {
                     videos.addAll(
-                        FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon", referer = response.request.url.toString()),
+                        FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon"),
                     )
                 }
 
                 videoUrl.contains("dood", ignoreCase = true) -> {
                     videos.addAll(
-                        DoodExtractor(client).videosFromUrl(videoUrl, "Dood", referer = response.request.url.toString()),
+                        DoodExtractor(client).videosFromUrl(videoUrl, "Dood"),
                     )
                 }
 
@@ -242,7 +250,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                 videoUrl.contains("streamlare", ignoreCase = true) -> {
                     videos.addAll(
-                        StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - ", referer = response.request.url.toString()),
+                        StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - "),
                     )
                 }
 
