@@ -1,0 +1,44 @@
+name: Build Kajzu Extension
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Kajzu
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Kajzu extension
+        run: |
+          ./gradlew src:en:kajzu:assembleRelease
+
+      - name: Find and upload APK
+        run: |
+          # Find the APK file
+          APK_FILE=$(find . -name "*.apk" -type f | grep kajzu | head -1)
+          echo "Found APK: $APK_FILE"
+
+          # Create a simple filename
+          cp "$APK_FILE" "kajzu-extension.apk"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kajzu-extension
+          path: kajzu-extension.apk
+          retention-days: 7
