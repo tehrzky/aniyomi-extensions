@@ -14,8 +14,6 @@ import eu.kanade.tachiyomi.lib.mixdropextractor.MixDropExtractor
 import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4uploadExtractor
 import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
-import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
-import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
@@ -178,12 +176,6 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         try {
             when {
-                isStreamWish(videoUrl) -> {
-                    videos.addAll(StreamWishExtractor(client).videosFromUrl(videoUrl))
-                }
-                isVidHide(videoUrl) -> {
-                    videos.addAll(VidHideExtractor(client).videosFromUrl(videoUrl))
-                }
                 videoUrl.contains("streamtape", ignoreCase = true) -> {
                     videos.addAll(StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape"))
                 }
@@ -215,15 +207,6 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         } else {
             videos
         }
-    }
-
-    private fun isStreamWish(url: String): Boolean {
-        return url.contains("streamwish", ignoreCase = true) ||
-            url.contains("strwish", ignoreCase = true)
-    }
-
-    private fun isVidHide(url: String): Boolean {
-        return url.contains("vidhide", ignoreCase = true)
     }
 
     override fun videoListSelector(): String = throw UnsupportedOperationException()
