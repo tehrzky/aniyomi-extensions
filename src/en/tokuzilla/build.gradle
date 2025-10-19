@@ -1,7 +1,7 @@
 ext {
     extName = 'Tokuzilla'
     extClass = '.Tokuzilla'
-    extVersionCode = 30  // Increment version
+    extVersionCode = 31  // Increment version
 }
 
 apply from: "$rootDir/common.gradle"
