@@ -50,16 +50,16 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         arrayOf(
             Pair("Kamen Rider", "kamen-rider"),
             Pair("Super Sentai", "super-sentai"),
-            Pair("Latest", "")
-        )
+            Pair("Latest", ""),
+        ),
     )
 
     private val categories = listOf(
-        CategoryFilter()
+        CategoryFilter(),
     )
 
     override fun getFilterList() = AnimeFilterList(
-        categories
+        categories,
     )
 
     // ============================== Popular ===============================
@@ -75,7 +75,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             val link = element.selectFirst("a") ?: return@apply
             setUrlWithoutDomain(link.attr("href"))
-            
+
             title = element.selectFirst("h3")?.text()?.trim()
                 ?: link.attr("title").takeIf { it.isNotBlank() }
                 ?: link.selectFirst("img")?.attr("alt")
@@ -109,7 +109,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         val category = filters.find { it is CategoryFilter } as? CategoryFilter
         val categoryPath = category?.toUriPart() ?: ""
-        
+
         return if (categoryPath.isBlank()) {
             GET("$baseUrl/?s=${query.encodeURL()}", headers)
         } else {
@@ -191,7 +191,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         if (iframeSrc.isNullOrBlank()) {
             return listOf(
-                Video("", "ERROR: No video player found", "")
+                Video("", "ERROR: No video player found", ""),
             )
         }
 
@@ -273,7 +273,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     video.quality.contains("360") -> 2
                     else -> 0
                 }
-            }
+            },
         )
     }
 
