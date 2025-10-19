@@ -1,8 +1,10 @@
 package eu.kanade.tachiyomi.animeextension.en.kajzu
 
 import android.app.Application
+import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
+import eu.kanade.tachiyomi.animesource.model.AnimeFilter
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
@@ -16,6 +18,7 @@ import eu.kanade.tachiyomi.lib.streamlareextractor.StreamlareExtractor
 import eu.kanade.tachiyomi.lib.streamtapeextractor.StreamTapeExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -34,27 +37,51 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    // ============================== Popular ===============================
-    override fun popularAnimeRequest(page: Int): Request {
-        // Use Kamen Rider section for popular
-        return GET("$baseUrl/kamen-rider")
+    // Add proper headers to avoid 403 errors
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder().apply {
+        add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        add("Referer", baseUrl)
+        add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
     }
 
-    override fun popularAnimeSelector(): String = "div.item.post, div.col-sm-3.item.post"
+    // Filter for browse sections
+    private class CategoryFilter : UriPartFilter(
+        "Category",
+        arrayOf(
+            Pair("Kamen Rider", "kamen-rider"),
+            Pair("Super Sentai", "super-sentai"),
+            Pair("Latest", "")
+        )
+    )
+
+    private val categories = listOf(
+        CategoryFilter()
+    )
+
+    override fun getFilterList() = AnimeFilterList(
+        categories
+    )
+
+    // ============================== Popular ===============================
+    override fun popularAnimeRequest(page: Int): Request {
+        val category = preferences.getString("category", "kamen-rider") ?: "kamen-rider"
+        val url = if (category.isBlank()) baseUrl else "$baseUrl/$category"
+        return GET(url, headers)
+    }
+
+    override fun popularAnimeSelector(): String = "div.item.post"
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
             val link = element.selectFirst("a") ?: return@apply
             setUrlWithoutDomain(link.attr("href"))
-
-            // Try multiple title selectors
+            
             title = element.selectFirst("h3")?.text()?.trim()
                 ?: link.attr("title").takeIf { it.isNotBlank() }
                 ?: link.selectFirst("img")?.attr("alt")
                 ?: link.text().trim()
                 ?: "Unknown Title"
 
-            // Try multiple image selectors
             thumbnail_url = element.selectFirst("img")?.let { img ->
                 img.attr("src").takeIf { src -> src.isNotBlank() && src != "null" }
                     ?: img.attr("data-src")
@@ -67,10 +94,10 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Latest ===============================
     override fun latestUpdatesRequest(page: Int): Request {
-        return GET(baseUrl)
+        return GET(baseUrl, headers)
     }
 
-    override fun latestUpdatesSelector(): String = "div.item.post, div.col-sm-3.item.post"
+    override fun latestUpdatesSelector(): String = "div.item.post"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
         return popularAnimeFromElement(element)
@@ -80,10 +107,17 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Search ===============================
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        return GET("$baseUrl/?s=${query.encodeURL()}")
+        val category = filters.find { it is CategoryFilter } as? CategoryFilter
+        val categoryPath = category?.toUriPart() ?: ""
+        
+        return if (categoryPath.isBlank()) {
+            GET("$baseUrl/?s=${query.encodeURL()}", headers)
+        } else {
+            GET("$baseUrl/$categoryPath/?s=${query.encodeURL()}", headers)
+        }
     }
 
-    override fun searchAnimeSelector(): String = "div.item.post, div.col-sm-3.item.post, article.post, div.result-item"
+    override fun searchAnimeSelector(): String = "div.item.post"
 
     override fun searchAnimeFromElement(element: Element): SAnime {
         return popularAnimeFromElement(element)
@@ -94,29 +128,29 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            title = document.selectFirst("h1.entry-title, h1, h1.title")?.text()
-                ?: document.selectFirst("meta[property=og:title]")?.attr("content")
-                ?: "Unknown"
+            title = document.selectFirst("h1")?.text() ?: "Unknown"
 
-            // Try multiple image selectors
             thumbnail_url = document.selectFirst("img[fifulocal-featured]")?.attr("src")
                 ?: document.selectFirst("img.wp-post-image")?.attr("src")
-                ?: document.selectFirst("div.post-content img, .entry-content img")?.attr("src")
+                ?: document.selectFirst("div.item-img img")?.attr("src")
                 ?: document.selectFirst("meta[property=og:image]")?.attr("content")
 
-            // Try multiple description sources
-            description = document.selectFirst("meta[property=og:description]")?.attr("content")
-                ?: document.selectFirst("meta[name=description]")?.attr("content")
-                ?: document.selectFirst("div.entry-content, div.post-content")?.text()?.takeIf { it.length < 500 }
+            val descMeta = document.selectFirst("meta[name=description]")?.attr("content")
+            if (!descMeta.isNullOrBlank()) {
+                description = descMeta
+            }
 
-            // Try to get genre and status from various locations
-            document.select("table tr, .anime-info tr").forEach { row ->
-                val th = row.selectFirst("th, td:first-child")?.text() ?: return@forEach
-                val td = row.selectFirst("td:last-child, td:nth-child(2)")?.text() ?: return@forEach
+            document.select("table.table tbody tr").forEach { row ->
+                val th = row.selectFirst("th")?.text() ?: return@forEach
+                val td = row.selectFirst("td")?.text() ?: return@forEach
 
                 when {
-                    th.contains("Category", ignoreCase = true) -> handleCategory(row)
-                    th.contains("Genre", ignoreCase = true) -> handleCategory(row)
+                    th.contains("Category", ignoreCase = true) -> {
+                        val genreLinks = row.select("a")
+                        if (genreLinks.isNotEmpty()) {
+                            genre = genreLinks.joinToString(", ") { it.text() }
+                        }
+                    }
                     th.contains("Status", ignoreCase = true) -> {
                         status = parseStatus(td)
                     }
@@ -125,33 +159,18 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    private fun SAnime.handleCategory(row: Element) {
-        val genreLinks = row.select("a")
-        if (genreLinks.isNotEmpty()) {
-            genre = genreLinks.joinToString(", ") { it.text() }
-        } else {
-            val td = row.selectFirst("td:last-child, td:nth-child(2)")?.text()
-            if (!td.isNullOrBlank()) {
-                genre = td
-            }
-        }
-    }
-
     // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode li a, div.episode-list a, .episodes-list a, a[href*='episode'], a[href*='ep=']"
+    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode li a, div.episode-list a"
 
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
             val href = element.attr("href")
             setUrlWithoutDomain(href)
 
-            // Extract episode number from various patterns
             val episodeNum = Regex("""ep=(\d+)""").find(href)?.groupValues?.get(1)
                 ?: Regex("""episode[_-]?(\d+)""", RegexOption.IGNORE_CASE).find(href)?.groupValues?.get(1)
-                ?: Regex("""/(\d+)/?$""").find(href)?.groupValues?.get(1)
-                ?: element.text().let { text ->
-                    Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)
-                        ?: Regex("""(\d+)""").find(text)?.groupValues?.get(1)
+                ?: element.text().let {
+                    Regex("""(\d+)""").find(it)?.groupValues?.get(1)
                 }
                 ?: "1"
 
@@ -165,24 +184,23 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
 
-        // Look for iframe with video - try multiple selectors
+        // Look for iframe with video
         val iframeSrc = document.selectFirst("iframe#frame")?.attr("src")
             ?: document.selectFirst("div.player iframe")?.attr("src")
-            ?: document.selectFirst("iframe[src*='stream']")?.attr("src")
             ?: document.selectFirst("iframe[allowfullscreen]")?.attr("src")
-            ?: document.selectFirst("iframe")?.attr("src")
 
         if (iframeSrc.isNullOrBlank()) {
             return listOf(
-                Video(
-                    "",
-                    "ERROR: No video player found on this page",
-                    "",
-                ),
+                Video("", "ERROR: No video player found", "")
             )
         }
 
         var videoUrl = iframeSrc.toAbsoluteUrl()
+
+        // Add referer header for video requests
+        val videoHeaders = headers.newBuilder()
+            .add("Referer", response.request.url.toString())
+            .build()
 
         try {
             when {
@@ -199,21 +217,29 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     videos.addAll(DoodExtractor(client).videosFromUrl(videoUrl, "Dood"))
                 }
                 videoUrl.contains("mp4upload", ignoreCase = true) -> {
-                    videos.addAll(Mp4uploadExtractor(client).videosFromUrl(videoUrl, headers, "MP4Upload - "))
+                    videos.addAll(Mp4uploadExtractor(client).videosFromUrl(videoUrl, videoHeaders, "MP4Upload - "))
                 }
                 videoUrl.contains("streamlare", ignoreCase = true) -> {
                     videos.addAll(StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - "))
                 }
                 else -> {
-                    videos.add(Video(videoUrl, "Direct Stream", videoUrl))
+                    // Try direct stream with proper headers
+                    try {
+                        val directResponse = client.newCall(GET(videoUrl, videoHeaders)).execute()
+                        if (directResponse.isSuccessful) {
+                            videos.add(Video(videoUrl, "Direct Stream", videoUrl))
+                        }
+                    } catch (e: Exception) {
+                        // Ignore and continue
+                    }
                 }
             }
         } catch (e: Exception) {
-            return listOf(Video(videoUrl, "Error: ${e.message}", videoUrl))
+            // Continue with empty list
         }
 
         return if (videos.isEmpty()) {
-            listOf(Video(iframeSrc, "No streams found", iframeSrc))
+            listOf(Video(iframeSrc, "No streams found - Try opening in browser", iframeSrc))
         } else {
             videos
         }
@@ -225,6 +251,15 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // ============================== Settings ==============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        val categoryPref = ListPreference(screen.context).apply {
+            key = "category"
+            title = "Default category for Browse"
+            entries = arrayOf("Kamen Rider", "Super Sentai", "Latest")
+            entryValues = arrayOf("kamen-rider", "super-sentai", "")
+            summary = "%s"
+            setDefaultValue("kamen-rider")
+        }
+        screen.addPreference(categoryPref)
     }
 
     // ============================= Utilities ==============================
@@ -238,7 +273,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     video.quality.contains("360") -> 2
                     else -> 0
                 }
-            },
+            }
         )
     }
 
@@ -259,4 +294,10 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     private fun String.encodeURL(): String = java.net.URLEncoder.encode(this, "UTF-8")
+
+    // Filter classes
+    private open class UriPartFilter(displayName: String, val vals: Array<Pair<String, String>>) :
+        AnimeFilter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
+        fun toUriPart() = vals[state].second
+    }
 }
