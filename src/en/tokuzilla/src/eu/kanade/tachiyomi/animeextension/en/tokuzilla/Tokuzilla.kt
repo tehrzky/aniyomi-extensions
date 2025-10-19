@@ -101,10 +101,12 @@ class TokuzlExtractor(private val client: OkHttpClient) {
             val document = Jsoup.parse(mainBody)
 
             val iframeElement = document.selectFirst("iframe[src*=\"p2pplay\"]")
-            val iframeUrl = iframeElement?.attr("src") ?: return emptyList().also {
+            if (iframeElement == null) {
                 println("DEBUG: No iframe found")
+                return emptyList()
             }
-
+            
+            val iframeUrl = iframeElement.attr("src")
             println("DEBUG: Found iframe URL: $iframeUrl")
 
             val videoId = iframeUrl.substringAfterLast("#")
