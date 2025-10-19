@@ -18,6 +18,7 @@ import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -36,9 +37,27 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
+    // Add proper headers to avoid 403 errors
+    override val headers: Headers by lazy {
+        Headers.headersOf(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language",
+            "en-US,en;q=0.5",
+            "Accept-Encoding",
+            "gzip, deflate",
+            "Connection",
+            "keep-alive",
+            "Upgrade-Insecure-Requests",
+            "1",
+        )
+    }
+
     // ============================== Popular ===============================
     override fun popularAnimeRequest(page: Int): Request {
-        return GET("$baseUrl/kamen-rider")
+        return GET("$baseUrl/kamen-rider", headers)
     }
 
     override fun popularAnimeSelector(): String = "div.item.post"
@@ -62,7 +81,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Latest ===============================
     override fun latestUpdatesRequest(page: Int): Request {
-        return GET(baseUrl)
+        return GET(baseUrl, headers)
     }
 
     override fun latestUpdatesSelector(): String = "div.item.post"
@@ -75,7 +94,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Search ===============================
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        return GET("$baseUrl/?s=${query.encodeURL()}")
+        return GET("$baseUrl/?s=${query.encodeURL()}", headers)
     }
 
     override fun searchAnimeSelector(): String = "div.item.post"
@@ -162,10 +181,15 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
         var videoUrl = iframeSrc.toAbsoluteUrl()
 
+        // Add referer header for the video request
+        val videoHeaders = headers.newBuilder()
+            .add("Referer", response.request.url.toString())
+            .build()
+
         // Resolve shorteners
         if (videoUrl.contains("short.icu") || videoUrl.contains("bit.ly") || videoUrl.contains("tinyurl")) {
             try {
-                videoUrl = client.newCall(GET(videoUrl, headers)).execute().request.url.toString()
+                videoUrl = client.newCall(GET(videoUrl, videoHeaders)).execute().request.url.toString()
             } catch (e: Exception) {
                 return listOf(Video(iframeSrc, "Failed to resolve: ${e.message}", iframeSrc))
             }
@@ -176,54 +200,64 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 videoUrl.contains("streamwish", ignoreCase = true) ||
                     videoUrl.contains("strwish", ignoreCase = true) -> {
                     videos.addAll(
-                        StreamWishExtractor(client, headers).videosFromUrl(videoUrl),
+                        StreamWishExtractor(client, videoHeaders).videosFromUrl(videoUrl, referer = response.request.url.toString()),
                     )
                 }
 
                 videoUrl.contains("vidhide", ignoreCase = true) -> {
                     videos.addAll(
-                        VidHideExtractor(client, headers).videosFromUrl(videoUrl),
+                        VidHideExtractor(client, videoHeaders).videosFromUrl(videoUrl, referer = response.request.url.toString()),
                     )
                 }
 
                 videoUrl.contains("streamtape", ignoreCase = true) -> {
                     videos.addAll(
-                        StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape"),
+                        StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape", referer = response.request.url.toString()),
                     )
                 }
 
                 videoUrl.contains("mixdrop", ignoreCase = true) -> {
                     videos.addAll(
-                        MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop"),
+                        MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop", referer = response.request.url.toString()),
                     )
                 }
 
                 videoUrl.contains("filemoon", ignoreCase = true) -> {
                     videos.addAll(
-                        FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon"),
+                        FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon", referer = response.request.url.toString()),
                     )
                 }
 
                 videoUrl.contains("dood", ignoreCase = true) -> {
                     videos.addAll(
-                        DoodExtractor(client).videosFromUrl(videoUrl, "Dood"),
+                        DoodExtractor(client).videosFromUrl(videoUrl, "Dood", referer = response.request.url.toString()),
                     )
                 }
 
                 videoUrl.contains("mp4upload", ignoreCase = true) -> {
                     videos.addAll(
-                        Mp4uploadExtractor(client).videosFromUrl(videoUrl, headers, "MP4Upload - "),
+                        Mp4uploadExtractor(client).videosFromUrl(videoUrl, videoHeaders, "MP4Upload - "),
                     )
                 }
 
                 videoUrl.contains("streamlare", ignoreCase = true) -> {
                     videos.addAll(
-                        StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - "),
+                        StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - ", referer = response.request.url.toString()),
                     )
                 }
 
                 else -> {
-                    videos.add(Video(videoUrl, "Direct Stream", videoUrl))
+                    // For direct streams, try with proper headers
+                    try {
+                        val directResponse = client.newCall(GET(videoUrl, videoHeaders)).execute()
+                        if (directResponse.isSuccessful) {
+                            videos.add(Video(videoUrl, "Direct Stream", videoUrl))
+                        } else {
+                            videos.add(Video(videoUrl, "Direct Stream - ${directResponse.code}", videoUrl))
+                        }
+                    } catch (e: Exception) {
+                        videos.add(Video(videoUrl, "Direct Stream - Error: ${e.message}", videoUrl))
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -277,9 +311,4 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     private fun String.encodeURL(): String = java.net.URLEncoder.encode(this, "UTF-8")
-
-    companion object {
-        private const val USER_AGENT =
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
 }
