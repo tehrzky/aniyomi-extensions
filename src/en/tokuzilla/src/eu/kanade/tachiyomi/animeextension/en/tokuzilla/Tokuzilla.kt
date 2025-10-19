@@ -66,7 +66,7 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
         val filterList = if (filters.isEmpty()) getFilterList() else filters
         val genreFilter = filterList.find { it is GenreFilter } as GenreFilter?
-        
+
         return if (query.isNotBlank()) {
             GET("$baseUrl/page/$page?s=$query", headers)
         } else {
@@ -108,16 +108,16 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun animeDetailsParse(document: Document) = SAnime.create().apply {
         val details = document.selectFirst("div.video-details") ?: document
         title = details.selectFirst("h1, h2")?.text() ?: document.selectFirst("title")?.text()?.substringBefore("|")?.trim() ?: ""
-        
+
         thumbnail_url = document.selectFirst("img[post-id]")?.run {
             attr("src").ifEmpty { attr("data-src") }
         } ?: document.selectFirst("meta[property=og:image]")?.attr("content")
 
         genre = document.select("p.meta span a, .breadcrumbs a").eachText().joinToString().takeIf(String::isNotBlank)
-        
+
         description = buildString {
             document.selectFirst("h2#plot + p, .post-entry p")?.text()?.let { append(it) }
-            document.select("h3:contains(Story) + p, .post-entry p:not(:first-child)").eachText().forEach { 
+            document.select("h3:contains(Story) + p, .post-entry p:not(:first-child)").eachText().forEach {
                 if (it.isNotBlank()) {
                     if (isNotEmpty()) append("\n\n")
                     append(it)
@@ -126,7 +126,7 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }.takeIf { it.isNotBlank() }
 
         author = document.selectFirst("p.meta:contains(Year) span, th:contains(Year) + td")?.text()?.let { "Year $it" }
-        
+
         status = when {
             document.selectFirst("p.meta:contains(Type)")?.text()?.contains("ongoing", true) == true -> SAnime.ONGOING
             document.selectFirst("p.meta:contains(Type)")?.text()?.contains("complete", true) == true -> SAnime.COMPLETED
@@ -146,14 +146,14 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 SEpisode.create().apply {
                     val url = element.attr("href")
                     setUrlWithoutDomain(url)
-                    
+
                     // Extract episode number from URL or text
                     val epNum = when {
                         url.contains("ep=") -> url.substringAfter("ep=").substringBefore("&").toIntOrNull()
                         element.text().toIntOrNull() != null -> element.text().toInt()
                         else -> index + 1
                     }
-                    
+
                     name = "Episode $epNum"
                     episode_number = epNum?.toFloat() ?: (index + 1).toFloat()
                     date_upload = System.currentTimeMillis()
@@ -176,7 +176,7 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
-        
+
         return if (frameLink != null) {
             ChillxExtractor(client, headers).videoFromUrl(frameLink, baseUrl)
         } else {
@@ -186,9 +186,9 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!
-        
+
         return sortedWith(
-            compareByDescending { it.quality.contains(quality) }
+            compareByDescending { it.quality.contains(quality) },
         )
     }
 
