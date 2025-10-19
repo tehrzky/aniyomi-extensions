@@ -1,11 +1,9 @@
 ext {
     extName = 'Tokuzilla'
     extClass = '.Tokuzilla'
-    extVersionCode = 32  // Increment version
+    extVersionCode = 30
 }
 
 apply from: "$rootDir/common.gradle"
 
-dependencies {
-    implementation project(':lib:tokuzl-extractor')
-}
+// No dependencies needed - everything is in one file
