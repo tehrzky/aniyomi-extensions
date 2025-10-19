@@ -4,12 +4,11 @@ plugins {
 }
 
 dependencies {
-    compileOnly(libs.bundles.common)
+    compileOnly(libs.aniyomi.lib)
 }
 
-// Add this task to fix the build error
 tasks.register("printDependentExtensions") {
     doLast {
-        println("[]") // Return empty JSON array since no extensions depend on this yet
+        println("[]")
     }
 }
