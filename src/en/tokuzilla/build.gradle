@@ -1,11 +1,13 @@
 ext {
     extName = 'Tokuzilla'
     extClass = '.Tokuzilla'
-    extVersionCode = 28
+    extVersionCode = 29
 }
 
 apply from: "$rootDir/common.gradle"
 
 dependencies {
-    implementation(project(':lib:chillx-extractor'))
+    implementation(project(':lib:streamwish-extractor'))
+    implementation(project(':lib:dood-extractor')) 
+    implementation(project(':lib:mp4upload-extractor'))
 }
