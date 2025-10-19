@@ -68,7 +68,7 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val episodeName = document.selectFirst("h1")?.text() ?: "Episode"
-        
+
         // Use the extractor to get real videos
         return extractor.videosFromUrl(response.request.url.toString(), episodeName, headers)
     }
@@ -85,35 +85,35 @@ class TokuzlExtractor(private val client: OkHttpClient) {
         return try {
             val mainBody = client.newCall(GET(url, headers)).execute().use { it.body.string() }
             val document = Jsoup.parse(mainBody)
-            
+
             val iframeElement = document.selectFirst("iframe[src*=\"p2pplay\"]")
             val iframeUrl = iframeElement?.attr("src") ?: return emptyList()
-            
+
             val videoId = iframeUrl.substringAfterLast("#")
             if (videoId.isBlank()) return emptyList()
-            
+
             extractP2PPlayStreams(videoId, name, headers)
         } catch (e: Exception) {
             emptyList()
         }
     }
-    
+
     private fun extractP2PPlayStreams(videoId: String, name: String, headers: Headers): List<Video> {
         val videoApiUrl = "https://t1.p2pplay.pro/api/v1/video?id=$videoId&w=1920&h=1080&r=tokuzl.net"
-        
+
         return try {
             val response = client.newCall(GET(videoApiUrl, headers)).execute()
             if (!response.isSuccessful) return emptyList()
-            
+
             val encodedData = response.use { it.body.string().trim() }
             if (encodedData.isBlank()) return emptyList()
-            
+
             decodeAndParseVideoData(encodedData, name)
         } catch (e: Exception) {
             emptyList()
         }
     }
-    
+
     private fun decodeAndParseVideoData(encodedData: String, name: String): List<Video> {
         return try {
             val decodedBytes = Base64.getDecoder().decode(encodedData)
@@ -123,27 +123,27 @@ class TokuzlExtractor(private val client: OkHttpClient) {
             emptyList()
         }
     }
-    
+
     private fun parseVideoUrls(data: String, name: String): List<Video> {
         val videos = mutableListOf<Video>()
-        
+
         val m3u8Regex = Regex("""(https?://[^\s"']+\.m3u8[^\s"']*)""", RegexOption.IGNORE_CASE)
         m3u8Regex.findAll(data).forEach { match ->
             val url = match.value
             val quality = extractQualityFromUrl(url)
             videos.add(Video(url, "TOKUZL $quality - $name", url))
         }
-        
+
         val mp4Regex = Regex("""(https?://[^\s"']+\.mp4[^\s"']*)""", RegexOption.IGNORE_CASE)
         mp4Regex.findAll(data).forEach { match ->
             val url = match.value
             val quality = extractQualityFromUrl(url)
             videos.add(Video(url, "TOKUZL $quality - $name", url))
         }
-        
+
         return videos.distinctBy { it.url }
     }
-    
+
     private fun extractQualityFromUrl(url: String): String {
         return when {
             url.contains("1080") || url.contains("fullhd", true) -> "1080p"
