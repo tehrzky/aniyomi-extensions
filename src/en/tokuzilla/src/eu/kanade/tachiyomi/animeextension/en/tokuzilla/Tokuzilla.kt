@@ -69,8 +69,20 @@ class Tokuzilla : ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val episodeName = document.selectFirst("h1")?.text() ?: "Episode"
 
-        // Use the extractor to get real videos
-        return extractor.videosFromUrl(response.request.url.toString(), episodeName, headers)
+        // Try the extractor first
+        val videos = extractor.videosFromUrl(response.request.url.toString(), episodeName, headers)
+        
+        // If no videos found, fallback to iframe URL
+        return if (videos.isNotEmpty()) {
+            videos
+        } else {
+            val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
+            if (frameLink != null) {
+                listOf(Video(frameLink, "P2PPlay - $episodeName", frameLink))
+            } else {
+                emptyList()
+            }
+        }
     }
 
     override fun videoListSelector() = throw UnsupportedOperationException()
@@ -83,67 +95,112 @@ class TokuzlExtractor(private val client: OkHttpClient) {
 
     fun videosFromUrl(url: String, name: String, headers: Headers): List<Video> {
         return try {
+            println("DEBUG: Starting extraction from: $url")
+            
             val mainBody = client.newCall(GET(url, headers)).execute().use { it.body.string() }
             val document = Jsoup.parse(mainBody)
 
             val iframeElement = document.selectFirst("iframe[src*=\"p2pplay\"]")
-            val iframeUrl = iframeElement?.attr("src") ?: return emptyList()
+            val iframeUrl = iframeElement?.attr("src") ?: return emptyList().also { 
+                println("DEBUG: No iframe found")
+            }
 
+            println("DEBUG: Found iframe URL: $iframeUrl")
+            
             val videoId = iframeUrl.substringAfterLast("#")
-            if (videoId.isBlank()) return emptyList()
+            if (videoId.isBlank()) return emptyList().also { 
+                println("DEBUG: No video ID found in iframe URL")
+            }
 
+            println("DEBUG: Extracted video ID: $videoId")
+            
             extractP2PPlayStreams(videoId, name, headers)
         } catch (e: Exception) {
+            println("DEBUG: Error in main extraction: ${e.message}")
             emptyList()
         }
     }
-
+    
     private fun extractP2PPlayStreams(videoId: String, name: String, headers: Headers): List<Video> {
         val videoApiUrl = "https://t1.p2pplay.pro/api/v1/video?id=$videoId&w=1920&h=1080&r=tokuzl.net"
+        println("DEBUG: Calling API: $videoApiUrl")
 
         return try {
             val response = client.newCall(GET(videoApiUrl, headers)).execute()
-            if (!response.isSuccessful) return emptyList()
+            if (!response.isSuccessful) return emptyList().also {
+                println("DEBUG: API call failed: ${response.code}")
+            }
 
             val encodedData = response.use { it.body.string().trim() }
-            if (encodedData.isBlank()) return emptyList()
+            if (encodedData.isBlank()) return emptyList().also {
+                println("DEBUG: Empty response from API")
+            }
 
+            println("DEBUG: Got encoded data (first 100 chars): ${encodedData.take(100)}")
+            
             decodeAndParseVideoData(encodedData, name)
         } catch (e: Exception) {
+            println("DEBUG: Error in API call: ${e.message}")
             emptyList()
         }
     }
-
+    
     private fun decodeAndParseVideoData(encodedData: String, name: String): List<Video> {
         return try {
             val decodedBytes = Base64.getDecoder().decode(encodedData)
             val decodedData = String(decodedBytes)
+            println("DEBUG: Decoded data (first 200 chars): ${decodedData.take(200)}")
+            
             parseVideoUrls(decodedData, name)
         } catch (e: Exception) {
+            println("DEBUG: Error decoding base64: ${e.message}")
             emptyList()
         }
     }
-
+    
     private fun parseVideoUrls(data: String, name: String): List<Video> {
+        println("DEBUG: Parsing video URLs from data (length: ${data.length})")
+        
         val videos = mutableListOf<Video>()
 
         val m3u8Regex = Regex("""(https?://[^\s"']+\.m3u8[^\s"']*)""", RegexOption.IGNORE_CASE)
-        m3u8Regex.findAll(data).forEach { match ->
+        val m3u8Matches = m3u8Regex.findAll(data).toList()
+        println("DEBUG: Found ${m3u8Matches.size} m3u8 URLs")
+        
+        m3u8Matches.forEach { match ->
             val url = match.value
             val quality = extractQualityFromUrl(url)
+            println("DEBUG: m3u8 URL: $url")
             videos.add(Video(url, "TOKUZL $quality - $name", url))
         }
 
         val mp4Regex = Regex("""(https?://[^\s"']+\.mp4[^\s"']*)""", RegexOption.IGNORE_CASE)
-        mp4Regex.findAll(data).forEach { match ->
+        val mp4Matches = mp4Regex.findAll(data).toList()
+        println("DEBUG: Found ${mp4Matches.size} mp4 URLs")
+        
+        mp4Matches.forEach { match ->
             val url = match.value
             val quality = extractQualityFromUrl(url)
+            println("DEBUG: mp4 URL: $url")
             videos.add(Video(url, "TOKUZL $quality - $name", url))
         }
 
+        // Also look for any URLs that might contain video
+        if (videos.isEmpty()) {
+            val urlRegex = Regex("""(https?://[^\s"']+)""")
+            val allUrls = urlRegex.findAll(data).toList()
+            println("DEBUG: Found ${allUrls.size} total URLs in data")
+            
+            allUrls.take(5).forEach { match ->
+                val url = match.value
+                println("DEBUG: Potential URL: $url")
+            }
+        }
+
+        println("DEBUG: Total videos found: ${videos.size}")
         return videos.distinctBy { it.url }
     }
-
+    
     private fun extractQualityFromUrl(url: String): String {
         return when {
             url.contains("1080") || url.contains("fullhd", true) -> "1080p"
