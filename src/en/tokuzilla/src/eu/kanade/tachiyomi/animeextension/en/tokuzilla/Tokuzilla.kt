@@ -61,7 +61,7 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
-        
+
         // For now, return empty list - we'll fix video extraction separately
         // The p2pplay player requires special handling
         return emptyList()
