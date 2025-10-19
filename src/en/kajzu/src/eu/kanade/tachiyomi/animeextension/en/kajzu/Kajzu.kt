@@ -46,7 +46,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             val link = element.selectFirst("a") ?: return@apply
             setUrlWithoutDomain(link.attr("href"))
-            
+
             // Try multiple title selectors
             title = element.selectFirst("h3")?.text()?.trim()
                 ?: link.attr("title").takeIf { it.isNotBlank() }
@@ -94,7 +94,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            title = document.selectFirst("h1.entry-title, h1, h1.title")?.text() 
+            title = document.selectFirst("h1.entry-title, h1, h1.title")?.text()
                 ?: document.selectFirst("meta[property=og:title]")?.attr("content")
                 ?: "Unknown"
 
@@ -115,7 +115,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val td = row.selectFirst("td:last-child, td:nth-child(2)")?.text() ?: return@forEach
 
                 when {
-                    th.contains("Category", ignoreCase = true) || 
+                    th.contains("Category", ignoreCase = true) ||
                     th.contains("Genre", ignoreCase = true) -> {
                         val genreLinks = row.select("a")
                         if (genreLinks.isNotEmpty()) {
