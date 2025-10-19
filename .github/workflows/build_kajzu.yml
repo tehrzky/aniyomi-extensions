@@ -30,11 +30,18 @@ jobs:
       - name: Find and upload APK
         run: |
           # Find the APK file
-          APK_FILE=$(find . -name "*.apk" -type f | grep kajzu | head -1)
+          APK_FILE=$(find . -name "*kajzu*.apk" -o -name "*Kajzu*.apk" | head -1)
           echo "Found APK: $APK_FILE"
 
-          # Create a simple filename
-          cp "$APK_FILE" "kajzu-extension.apk"
+          # Copy to root directory with simple name
+          if [ -z "$APK_FILE" ]; then
+            echo "APK not found!"
+            find . -name "*.apk" -type f
+            exit 1
+          fi
+
+          cp "$APK_FILE" ./kajzu-extension.apk
+          ls -lh ./kajzu-extension.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
