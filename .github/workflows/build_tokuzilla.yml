@@ -23,17 +23,17 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build Tokuzilla extension (unsigned)
+      - name: Build Tokuzilla extension (Debug)
         run: |
-          ./gradlew src:en:tokuzilla:assembleNoDebug
+          ./gradlew src:en:tokuzilla:assembleDebug
 
       - name: Find and upload APK
         run: |
-          # Find the APK file - look for unsigned/noDebug builds
-          APK_FILE=$(find . -name "*tokuzilla*release*.apk" -o -name "*Tokuzilla*release*.apk" | head -1)
+          # Find the APK file - look for debug builds
+          APK_FILE=$(find . -name "*tokuzilla*debug*.apk" -o -name "*Tokuzilla*debug*.apk" | head -1)
           if [ -z "$APK_FILE" ]; then
             # Try alternative patterns
-            APK_FILE=$(find . -name "*tokuzilla*.apk" -o -name "*Tokuzilla*.apk" | grep -v debug | head -1)
+            APK_FILE=$(find . -name "*tokuzilla*.apk" -o -name "*Tokuzilla*.apk" | head -1)
           fi
           
           echo "Found APK: $APK_FILE"
