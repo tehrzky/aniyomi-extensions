@@ -113,7 +113,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                 when {
                     th.contains("Category", ignoreCase = true) ||
-                    th.contains("Genre", ignoreCase = true) -> {
+                            th.contains("Genre", ignoreCase = true) -> {
                         val genreLinks = row.select("a")
                         if (genreLinks.isNotEmpty()) {
                             genre = genreLinks.joinToString(", ") { it.text() }
@@ -177,7 +177,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         try {
             when {
                 videoUrl.contains("streamwish", ignoreCase = true) ||
-                    videoUrl.contains("strwish", ignoreCase = true) -> {
+                        videoUrl.contains("strwish", ignoreCase = true) -> {
                     videos.addAll(
                         StreamWishExtractor(client).videosFromUrl(videoUrl),
                     )
