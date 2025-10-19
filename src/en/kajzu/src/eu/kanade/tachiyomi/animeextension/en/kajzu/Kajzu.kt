@@ -40,22 +40,25 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/kamen-rider")
     }
 
-    override fun popularAnimeSelector(): String = "div.item.post"
+    override fun popularAnimeSelector(): String = "div.item.post, div.col-sm-3.item.post"
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
             val link = element.selectFirst("a") ?: return@apply
             setUrlWithoutDomain(link.attr("href"))
-
-            // Get title from h3 or from the link title attribute
+            
+            // Try multiple title selectors
             title = element.selectFirst("h3")?.text()?.trim()
                 ?: link.attr("title").takeIf { it.isNotBlank() }
+                ?: link.selectFirst("img")?.attr("alt")
                 ?: link.text().trim()
                 ?: "Unknown Title"
 
+            // Try multiple image selectors
             thumbnail_url = element.selectFirst("img")?.let { img ->
-                img.attr("src").takeIf { src -> src.isNotBlank() }
+                img.attr("src").takeIf { src -> src.isNotBlank() && src != "null" }
                     ?: img.attr("data-src")
+                    ?: img.attr("data-lazy-src")
             }
         }
     }
@@ -67,7 +70,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET(baseUrl)
     }
 
-    override fun latestUpdatesSelector(): String = "div.item.post"
+    override fun latestUpdatesSelector(): String = "div.item.post, div.col-sm-3.item.post"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
         return popularAnimeFromElement(element)
@@ -80,7 +83,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/?s=${query.encodeURL()}")
     }
 
-    override fun searchAnimeSelector(): String = "div.item.post"
+    override fun searchAnimeSelector(): String = "div.item.post, div.col-sm-3.item.post, article.post, div.result-item"
 
     override fun searchAnimeFromElement(element: Element): SAnime {
         return popularAnimeFromElement(element)
@@ -91,27 +94,36 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            title = document.selectFirst("h1")?.text() ?: "Unknown"
+            title = document.selectFirst("h1.entry-title, h1, h1.title")?.text() 
+                ?: document.selectFirst("meta[property=og:title]")?.attr("content")
+                ?: "Unknown"
 
             // Try multiple image selectors
             thumbnail_url = document.selectFirst("img[fifulocal-featured]")?.attr("src")
                 ?: document.selectFirst("img.wp-post-image")?.attr("src")
-                ?: document.selectFirst("div.item-img img")?.attr("src")
-                ?: document.selectFirst("img")?.attr("src")
+                ?: document.selectFirst("div.post-content img, .entry-content img")?.attr("src")
+                ?: document.selectFirst("meta[property=og:image]")?.attr("content")
 
-            val descMeta = document.selectFirst("meta[name=description]")?.attr("content")
-            if (!descMeta.isNullOrBlank()) {
-                description = descMeta
-            }
+            // Try multiple description sources
+            description = document.selectFirst("meta[property=og:description]")?.attr("content")
+                ?: document.selectFirst("meta[name=description]")?.attr("content")
+                ?: document.selectFirst("div.entry-content, div.post-content")?.text()?.takeIf { it.length < 500 }
 
             // Try to get genre and status from various locations
-            document.select("table.table tbody tr").forEach { row ->
-                val th = row.selectFirst("th")?.text() ?: return@forEach
-                val td = row.selectFirst("td")?.text() ?: return@forEach
+            document.select("table tr, .anime-info tr").forEach { row ->
+                val th = row.selectFirst("th, td:first-child")?.text() ?: return@forEach
+                val td = row.selectFirst("td:last-child, td:nth-child(2)")?.text() ?: return@forEach
 
                 when {
-                    th.contains("Category", ignoreCase = true) -> handleCategory(row)
-                    th.contains("Genre", ignoreCase = true) -> handleCategory(row)
+                    th.contains("Category", ignoreCase = true) || 
+                    th.contains("Genre", ignoreCase = true) -> {
+                        val genreLinks = row.select("a")
+                        if (genreLinks.isNotEmpty()) {
+                            genre = genreLinks.joinToString(", ") { it.text() }
+                        } else if (td.isNotBlank()) {
+                            genre = td
+                        }
+                    }
                     th.contains("Status", ignoreCase = true) -> {
                         status = parseStatus(td)
                     }
@@ -120,15 +132,8 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    private fun SAnime.handleCategory(row: Element) {
-        val genreLinks = row.select("a")
-        if (genreLinks.isNotEmpty()) {
-            genre = genreLinks.joinToString(", ") { it.text() }
-        }
-    }
-
     // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode li a, div.episode-list a"
+    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode li a, div.episode-list a, .episodes-list a, a[href*='episode'], a[href*='ep=']"
 
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
