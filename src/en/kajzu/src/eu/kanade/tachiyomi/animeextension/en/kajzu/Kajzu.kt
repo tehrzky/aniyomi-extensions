@@ -115,19 +115,24 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val td = row.selectFirst("td:last-child, td:nth-child(2)")?.text() ?: return@forEach
 
                 when {
-                    th.contains("Category", ignoreCase = true) ||
-                            th.contains("Genre", ignoreCase = true) -> {
-                        val genreLinks = row.select("a")
-                        if (genreLinks.isNotEmpty()) {
-                            genre = genreLinks.joinToString(", ") { it.text() }
-                        } else if (td.isNotBlank()) {
-                            genre = td
-                        }
-                    }
+                    th.contains("Category", ignoreCase = true) -> handleCategory(row)
+                    th.contains("Genre", ignoreCase = true) -> handleCategory(row)
                     th.contains("Status", ignoreCase = true) -> {
                         status = parseStatus(td)
                     }
                 }
+            }
+        }
+    }
+
+    private fun SAnime.handleCategory(row: Element) {
+        val genreLinks = row.select("a")
+        if (genreLinks.isNotEmpty()) {
+            genre = genreLinks.joinToString(", ") { it.text() }
+        } else {
+            val td = row.selectFirst("td:last-child, td:nth-child(2)")?.text()
+            if (!td.isNullOrBlank()) {
+                genre = td
             }
         }
     }
