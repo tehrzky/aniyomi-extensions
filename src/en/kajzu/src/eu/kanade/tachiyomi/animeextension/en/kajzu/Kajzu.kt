@@ -18,7 +18,6 @@ import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.lib.vidhideextractor.VidHideExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
@@ -37,35 +36,10 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    // Add proper headers without overriding the final property
-    private val customHeaders: Headers by lazy {
-        Headers.headersOf(
-            "User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept",
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language",
-            "en-US,en;q=0.5",
-            "Accept-Encoding",
-            "gzip, deflate",
-            "Connection",
-            "keep-alive",
-            "Upgrade-Insecure-Requests",
-            "1",
-        )
-    }
-
-    // Override the getter for headers to use our custom headers
-    override fun headersBuilder(): Headers.Builder = super.headersBuilder().apply {
-        customHeaders.forEach { header ->
-            add(header.first, header.second)
-        }
-    }
-
     // ============================== Popular ===============================
     override fun popularAnimeRequest(page: Int): Request {
-        // Popular shows are in Kamen Rider section
-        return GET("$baseUrl/kamen-rider", headers)
+        // Use Kamen Rider section for popular
+        return GET("$baseUrl/kamen-rider")
     }
 
     override fun popularAnimeSelector(): String = "div.item.post"
@@ -74,13 +48,16 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             val link = element.selectFirst("a") ?: return@apply
             setUrlWithoutDomain(link.attr("href"))
-            title = link.attr("title").takeIf { it.isNotBlank() }
-                ?: element.selectFirst("h3")?.text()
-                ?: element.selectFirst("a")?.text()
-                ?: "Unknown"
-            thumbnail_url = element.selectFirst("img")?.let {
-                it.attr("src").takeIf { src -> src.isNotBlank() }
-                    ?: it.attr("data-src")
+            
+            // Get title from h3 or from the link title attribute
+            title = element.selectFirst("h3")?.text()?.trim()
+                ?: link.attr("title").takeIf { it.isNotBlank() }
+                ?: link.text().trim()
+                ?: "Unknown Title"
+                
+            thumbnail_url = element.selectFirst("img")?.let { img ->
+                img.attr("src").takeIf { src -> src.isNotBlank() }
+                    ?: img.attr("data-src")
             }
         }
     }
@@ -89,7 +66,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Latest ===============================
     override fun latestUpdatesRequest(page: Int): Request {
-        return GET(baseUrl, headers)
+        return GET(baseUrl)
     }
 
     override fun latestUpdatesSelector(): String = "div.item.post"
@@ -102,7 +79,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =============================== Search ===============================
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        return GET("$baseUrl/?s=${query.encodeURL()}", headers)
+        return GET("$baseUrl/?s=${query.encodeURL()}")
     }
 
     override fun searchAnimeSelector(): String = "div.item.post"
@@ -118,22 +95,25 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             title = document.selectFirst("h1")?.text() ?: "Unknown"
 
-            thumbnail_url = document.selectFirst("img[fifulocal-featured], img.wp-post-image")?.let {
-                it.attr("src").takeIf { src -> src.isNotBlank() }
-                    ?: it.attr("data-src")
-            }
+            // Try multiple image selectors
+            thumbnail_url = document.selectFirst("img[fifulocal-featured]")?.attr("src")
+                ?: document.selectFirst("img.wp-post-image")?.attr("src")
+                ?: document.selectFirst("div.item-img img")?.attr("src")
+                ?: document.selectFirst("img")?.attr("src")
 
             val descMeta = document.selectFirst("meta[name=description]")?.attr("content")
             if (!descMeta.isNullOrBlank()) {
                 description = descMeta
             }
 
+            // Try to get genre and status from various locations
             document.select("table.table tbody tr").forEach { row ->
                 val th = row.selectFirst("th")?.text() ?: return@forEach
                 val td = row.selectFirst("td")?.text() ?: return@forEach
 
                 when {
-                    th.contains("Category", ignoreCase = true) -> {
+                    th.contains("Category", ignoreCase = true) || 
+                    th.contains("Genre", ignoreCase = true) -> {
                         val genreLinks = row.select("a")
                         if (genreLinks.isNotEmpty()) {
                             genre = genreLinks.joinToString(", ") { it.text() }
@@ -148,17 +128,20 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode li a"
+    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode li a, div.episode-list a"
 
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
             val href = element.attr("href")
             setUrlWithoutDomain(href)
 
+            // Extract episode number from various patterns
             val episodeNum = Regex("""ep=(\d+)""").find(href)?.groupValues?.get(1)
                 ?: Regex("""episode[_-]?(\d+)""", RegexOption.IGNORE_CASE).find(href)?.groupValues?.get(1)
-                ?: element.text().let {
-                    Regex("""(\d+)""").find(it)?.groupValues?.get(1)
+                ?: Regex("""/(\d+)/?$""").find(href)?.groupValues?.get(1)
+                ?: element.text().let { text ->
+                    Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)
+                        ?: Regex("""(\d+)""").find(text)?.groupValues?.get(1)
                 }
                 ?: "1"
 
@@ -172,49 +155,37 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
 
-        // Look for iframe with video
+        // Look for iframe with video - try multiple selectors
         val iframeSrc = document.selectFirst("iframe#frame")?.attr("src")
             ?: document.selectFirst("div.player iframe")?.attr("src")
+            ?: document.selectFirst("iframe[src*='stream']")?.attr("src")
             ?: document.selectFirst("iframe[allowfullscreen]")?.attr("src")
+            ?: document.selectFirst("iframe")?.attr("src")
 
         if (iframeSrc.isNullOrBlank()) {
             return listOf(
                 Video(
-                    response.request.url.toString(),
+                    "",
                     "ERROR: No video player found on this page",
-                    response.request.url.toString(),
+                    "",
                 ),
             )
         }
 
         var videoUrl = iframeSrc.toAbsoluteUrl()
 
-        // Add referer header for the video request
-        val videoHeaders = headers.newBuilder()
-            .add("Referer", response.request.url.toString())
-            .build()
-
-        // Resolve shorteners
-        if (videoUrl.contains("short.icu") || videoUrl.contains("bit.ly") || videoUrl.contains("tinyurl")) {
-            try {
-                videoUrl = client.newCall(GET(videoUrl, videoHeaders)).execute().request.url.toString()
-            } catch (e: Exception) {
-                return listOf(Video(iframeSrc, "Failed to resolve: ${e.message}", iframeSrc))
-            }
-        }
-
         try {
             when {
                 videoUrl.contains("streamwish", ignoreCase = true) ||
                     videoUrl.contains("strwish", ignoreCase = true) -> {
                     videos.addAll(
-                        StreamWishExtractor(client, videoHeaders).videosFromUrl(videoUrl),
+                        StreamWishExtractor(client).videosFromUrl(videoUrl),
                     )
                 }
 
                 videoUrl.contains("vidhide", ignoreCase = true) -> {
                     videos.addAll(
-                        VidHideExtractor(client, videoHeaders).videosFromUrl(videoUrl),
+                        VidHideExtractor(client).videosFromUrl(videoUrl),
                     )
                 }
 
@@ -244,7 +215,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                 videoUrl.contains("mp4upload", ignoreCase = true) -> {
                     videos.addAll(
-                        Mp4uploadExtractor(client).videosFromUrl(videoUrl, videoHeaders, "MP4Upload - "),
+                        Mp4uploadExtractor(client).videosFromUrl(videoUrl, headers, "MP4Upload - "),
                     )
                 }
 
@@ -255,17 +226,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 }
 
                 else -> {
-                    // For direct streams, try with proper headers
-                    try {
-                        val directResponse = client.newCall(GET(videoUrl, videoHeaders)).execute()
-                        if (directResponse.isSuccessful) {
-                            videos.add(Video(videoUrl, "Direct Stream", videoUrl))
-                        } else {
-                            videos.add(Video(videoUrl, "Direct Stream - ${directResponse.code}", videoUrl))
-                        }
-                    } catch (e: Exception) {
-                        videos.add(Video(videoUrl, "Direct Stream - Error: ${e.message}", videoUrl))
-                    }
+                    videos.add(Video(videoUrl, "Direct Stream", videoUrl))
                 }
             }
         } catch (e: Exception) {
