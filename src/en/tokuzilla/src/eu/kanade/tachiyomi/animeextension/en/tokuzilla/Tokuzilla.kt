@@ -62,9 +62,14 @@ class Tokuzilla : ParsedAnimeHttpSource() {
         val document = response.asJsoup()
         val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
 
-        // For now, return empty list - we'll fix video extraction separately
-        // The p2pplay player requires special handling
-        return emptyList()
+        return if (frameLink != null) {
+            // Try to create a basic video from the iframe URL
+            // This won't play the video but will prevent the app from closing
+            listOf(Video(frameLink, "P2PPlay", frameLink))
+        } else {
+            // If no iframe found, return a dummy video to prevent app crash
+            listOf(Video("https://example.com/dummy.mp4", "Video not available", "https://example.com/dummy.mp4"))
+        }
     }
 
     override fun videoListSelector() = throw UnsupportedOperationException()
