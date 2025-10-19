@@ -55,8 +55,8 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
             setUrlWithoutDomain(element.attr("href"))
-            title = element.attr("title").takeIf { it.isNotBlank() } 
-                ?: element.selectFirst("h2, h3, .title")?.text() 
+            title = element.attr("title").takeIf { it.isNotBlank() }
+                ?: element.selectFirst("h2, h3, .title")?.text()
                 ?: element.text()
         }
     }
@@ -73,7 +73,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun latestUpdatesFromElement(element: Element): SAnime {
         return SAnime.create().apply {
             setUrlWithoutDomain(element.attr("href"))
-            thumbnail_url = element.selectFirst("img")?.attr("src") 
+            thumbnail_url = element.selectFirst("img")?.attr("src")
                 ?: element.selectFirst("img")?.attr("data-src")
             val fullTitle = element.selectFirst("h3.title, h2, .title")?.text() ?: "Unknown Title"
             title = fullTitle.substringBefore("Episode")
@@ -105,7 +105,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
             title = fullTitle.substringBefore("Episode")
                 .substringBefore("episode")
                 .trim()
-            
+
             thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img, img.cover")?.attr("src")
                 ?: document.selectFirst("img")?.attr("src")
 
