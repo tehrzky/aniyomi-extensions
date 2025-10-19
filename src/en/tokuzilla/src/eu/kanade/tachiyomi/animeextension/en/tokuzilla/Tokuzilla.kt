@@ -22,7 +22,7 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Tokuzilla"
 
-    override val baseUrl = "https://tokuzilla.net"
+    override val baseUrl = "https://tokuzl.net"
 
     override val lang = "en"
 
