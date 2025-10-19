@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.tokuzlextractor.TokuzlExtractor  // Add this import
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
@@ -18,6 +19,9 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override val baseUrl = "https://tokuzl.net"
     override val lang = "en"
     override val supportsLatest = true
+
+    // Add the extractor
+    private val extractor by lazy { TokuzlExtractor(client) }
 
     override fun popularAnimeSelector() = "div.col-sm-3.col-xs-6.item"
     override fun popularAnimeRequest(page: Int) = GET("$baseUrl/page/$page", headers)
@@ -60,16 +64,10 @@ class Tokuzilla : ParsedAnimeHttpSource() {
 
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
-
-        return if (frameLink != null) {
-            // Try to create a basic video from the iframe URL
-            // This won't play the video but will prevent the app from closing
-            listOf(Video(frameLink, "P2PPlay", frameLink))
-        } else {
-            // If no iframe found, return a dummy video to prevent app crash
-            listOf(Video("https://example.com/dummy.mp4", "Video not available", "https://example.com/dummy.mp4"))
-        }
+        val episodeName = document.selectFirst("h1")?.text() ?: "Episode"
+        
+        // Use the extractor to get real videos
+        return extractor.videosFromUrl(response.request.url.toString(), episodeName, headers)
     }
 
     override fun videoListSelector() = throw UnsupportedOperationException()
