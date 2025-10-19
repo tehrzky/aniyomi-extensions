@@ -219,7 +219,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     private fun isStreamWish(url: String): Boolean {
         return url.contains("streamwish", ignoreCase = true) ||
-                url.contains("strwish", ignoreCase = true)
+            url.contains("strwish", ignoreCase = true)
     }
 
     private fun isVidHide(url: String): Boolean {
