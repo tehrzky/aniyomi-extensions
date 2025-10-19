@@ -26,35 +26,35 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val lang = "en"
 
-    override val supportsLatest = false
+    override val supportsLatest = true
 
     private val preferences by getPreferencesLazy()
 
     // ============================== Popular ===============================
-    override fun popularAnimeSelector() = "div.col-sm-4.col-xs-12.item"
+    override fun popularAnimeSelector() = "div.col-sm-3.col-xs-6.item"
 
     override fun popularAnimeRequest(page: Int) = GET("$baseUrl/page/$page")
 
     override fun popularAnimeFromElement(element: Element) = SAnime.create().apply {
         element.selectFirst("a")!!.run {
             setUrlWithoutDomain(attr("href"))
-            title = attr("title")
+            title = attr("title").ifEmpty { selectFirst("h3")?.text() ?: "" }
         }
-        thumbnail_url = element.selectFirst("img")!!.attr("src")
+        thumbnail_url = element.selectFirst("img")!!.attr("src").ifEmpty {
+            element.selectFirst("img")!!.attr("data-src")
+        }
     }
 
     override fun popularAnimeNextPageSelector() = "a.next.page-numbers"
 
     // =============================== Latest ===============================
-    override fun latestUpdatesNextPageSelector() = throw UnsupportedOperationException()
+    override fun latestUpdatesSelector() = popularAnimeSelector()
 
-    override fun latestUpdatesFromElement(element: Element) = throw UnsupportedOperationException()
+    override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/page/$page")
 
-    override fun latestUpdatesRequest(page: Int): Request = throw UnsupportedOperationException()
+    override fun latestUpdatesFromElement(element: Element) = popularAnimeFromElement(element)
 
-    override fun latestUpdatesSelector() = throw UnsupportedOperationException()
-
-    override fun latestUpdatesParse(response: Response) = throw UnsupportedOperationException()
+    override fun latestUpdatesNextPageSelector() = popularAnimeNextPageSelector()
 
     // =============================== Search ===============================
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
@@ -64,35 +64,38 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun searchAnimeSelector() = popularAnimeSelector()
 
     override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request {
-        var url = baseUrl
-        filters.forEach { filter ->
-            when (filter) {
-                is GenreFilter -> url += filter.toUriPart()
-                else -> {}
-            }
+        val filterList = if (filters.isEmpty()) getFilterList() else filters
+        val genreFilter = filterList.find { it is GenreFilter } as GenreFilter?
+        
+        return if (query.isNotBlank()) {
+            GET("$baseUrl/page/$page?s=$query", headers)
+        } else {
+            genreFilter?.toUriPart()?.let { genre ->
+                GET("$baseUrl$genre/page/$page", headers)
+            } ?: GET("$baseUrl/page/$page", headers)
         }
-        return GET("$url/page/$page?s=$query")
     }
 
     override fun getFilterList() = AnimeFilterList(
+        AnimeFilter.Header("NOTE: Ignore if using text search"),
         GenreFilter(),
     )
 
     private class GenreFilter : UriPartFilter(
         "Genres",
         arrayOf(
-            Pair("Any", ""),
-            Pair("Series", "/series"),
-            Pair("Movie", "/movie"),
+            Pair("All", ""),
             Pair("Kamen Rider", "/kamen-rider"),
             Pair("Super Sentai", "/super-sentai"),
-            Pair("Armor Hero", "/armor-hero"),
-            Pair("Garo", "/garo"),
-            Pair("Godzilla", "/godzilla"),
             Pair("Metal Heroes", "/metal-heroes"),
-            Pair("Power Rangers", "/power-ranger"),
             Pair("Ultraman", "/ultraman"),
+            Pair("Armor Hero", "/armor-hero"),
+            Pair("Power Ranger", "/power-ranger"),
+            Pair("Godzilla", "/godzilla"),
+            Pair("Garo", "/garo"),
             Pair("Other", "/other"),
+            Pair("Movie", "/movie"),
+            Pair("Series", "/series"),
         ),
     )
 
@@ -103,44 +106,67 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document) = SAnime.create().apply {
-        val details = document.selectFirst("div.video-details")!!
-        title = details.selectFirst("h1")!!.text()
-        thumbnail_url = details.selectFirst("img")?.run {
-            absUrl("data-src").ifEmpty { absUrl("src") }
-        }
-        genre = details.select("span.meta > a").eachText().joinToString().takeIf(String::isNotBlank)
-        description = document.selectFirst("h2#plot + p")!!.text()
-        author = details.selectFirst("th:contains(Year) + td")?.text()?.let { "Year $it" }
-        status = details.selectFirst("th:contains(Status) + td")?.text().orEmpty().let {
-            when {
-                it.contains("Ongoing") -> SAnime.ONGOING
-                it.contains("Complete") -> SAnime.COMPLETED
-                else -> SAnime.UNKNOWN
+        val details = document.selectFirst("div.video-details") ?: document
+        title = details.selectFirst("h1, h2")?.text() ?: document.selectFirst("title")?.text()?.substringBefore("|")?.trim() ?: ""
+        
+        thumbnail_url = document.selectFirst("img[post-id]")?.run {
+            attr("src").ifEmpty { attr("data-src") }
+        } ?: document.selectFirst("meta[property=og:image]")?.attr("content")
+
+        genre = document.select("p.meta span a, .breadcrumbs a").eachText().joinToString().takeIf(String::isNotBlank)
+        
+        description = buildString {
+            document.selectFirst("h2#plot + p, .post-entry p")?.text()?.let { append(it) }
+            document.select("h3:contains(Story) + p, .post-entry p:not(:first-child)").eachText().forEach { 
+                if (it.isNotBlank()) {
+                    if (isNotEmpty()) append("\n\n")
+                    append(it)
+                }
             }
+        }.takeIf { it.isNotBlank() }
+
+        author = document.selectFirst("p.meta:contains(Year) span, th:contains(Year) + td")?.text()?.let { "Year $it" }
+        
+        status = when {
+            document.selectFirst("p.meta:contains(Type)")?.text()?.contains("ongoing", true) == true -> SAnime.ONGOING
+            document.selectFirst("p.meta:contains(Type)")?.text()?.contains("complete", true) == true -> SAnime.COMPLETED
+            else -> SAnime.UNKNOWN
         }
     }
 
     // ============================== Episodes ==============================
     override fun episodeListSelector() = "ul.pagination.post-tape a"
+
     override fun episodeListParse(response: Response): List<SEpisode> {
         val document = response.asJsoup()
-
         val episodes = document.select(episodeListSelector())
+
         return if (episodes.isNotEmpty()) {
-            episodes.map {
+            episodes.mapIndexed { index, element ->
                 SEpisode.create().apply {
-                    setUrlWithoutDomain(it.attr("href"))
-                    val epNum = it.text()
+                    val url = element.attr("href")
+                    setUrlWithoutDomain(url)
+                    
+                    // Extract episode number from URL or text
+                    val epNum = when {
+                        url.contains("ep=") -> url.substringAfter("ep=").substringBefore("&").toIntOrNull()
+                        element.text().toIntOrNull() != null -> element.text().toInt()
+                        else -> index + 1
+                    }
+                    
                     name = "Episode $epNum"
-                    episode_number = epNum.toFloatOrNull() ?: 1F
+                    episode_number = epNum?.toFloat() ?: (index + 1).toFloat()
+                    date_upload = System.currentTimeMillis()
                 }
-            }.reversed()
+            }
         } else {
-            SEpisode.create().apply {
-                setUrlWithoutDomain(document.selectFirst("meta[property=og:url]")!!.attr("content"))
-                episode_number = 1F
+            // Single episode/movie
+            listOf(SEpisode.create().apply {
+                setUrlWithoutDomain(response.request.url.toString())
                 name = "Movie"
-            }.let(::listOf)
+                episode_number = 1F
+                date_upload = System.currentTimeMillis()
+            })
         }
     }
 
@@ -149,16 +175,21 @@ class Tokuzilla : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // ============================ Video Links =============================
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
-        val frameLink = document.selectFirst("iframe[id=frame]")!!.attr("src")
-        return ChillxExtractor(client, headers).videoFromUrl(frameLink, baseUrl)
+        val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
+        
+        return if (frameLink != null) {
+            ChillxExtractor(client, headers).videoFromUrl(frameLink, baseUrl)
+        } else {
+            emptyList()
+        }
     }
 
     override fun List<Video>.sort(): List<Video> {
         val quality = preferences.getString(PREF_QUALITY_KEY, PREF_QUALITY_DEFAULT)!!
-
+        
         return sortedWith(
-            compareBy { it.quality.contains(quality) },
-        ).reversed()
+            compareByDescending { it.quality.contains(quality) }
+        )
     }
 
     override fun videoListSelector() = throw UnsupportedOperationException()
