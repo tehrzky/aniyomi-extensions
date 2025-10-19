@@ -21,7 +21,7 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override val supportsLatest = true
 
     override fun popularAnimeSelector() = "div.col-sm-3.col-xs-6.item"
-    override fun popularAnimeRequest(page: Int) = GET("$baseUrl/page/$page")
+    override fun popularAnimeRequest(page: Int) = GET("$baseUrl/page/$page", headers)
     override fun popularAnimeFromElement(element: Element) = SAnime.create().apply {
         element.selectFirst("a")!!.run {
             setUrlWithoutDomain(attr("href"))
@@ -32,14 +32,14 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun popularAnimeNextPageSelector() = "a.next.page-numbers"
 
     override fun latestUpdatesSelector() = popularAnimeSelector()
-    override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/page/$page")
+    override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/page/$page", headers)
     override fun latestUpdatesFromElement(element: Element) = popularAnimeFromElement(element)
     override fun latestUpdatesNextPageSelector() = popularAnimeNextPageSelector()
 
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
     override fun searchAnimeNextPageSelector() = popularAnimeNextPageSelector()
     override fun searchAnimeSelector() = popularAnimeSelector()
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = GET("$baseUrl/page/$page?s=$query")
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = GET("$baseUrl/page/$page?s=$query", headers)
 
     override fun animeDetailsParse(document: Document) = SAnime.create().apply {
         title = document.selectFirst("h1")?.text() ?: ""
