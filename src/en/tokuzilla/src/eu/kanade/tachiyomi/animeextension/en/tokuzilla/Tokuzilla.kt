@@ -5,7 +5,9 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
-import eu.kanade.tachiyomi.lib.chillxextractor.ChillxExtractor
+import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
+import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
+import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4UploadExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Request
@@ -62,12 +64,54 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
+        
         return if (frameLink != null) {
-            ChillxExtractor(client, headers).videoFromUrl(frameLink, baseUrl)
+            // Try multiple extractors for different video hosts
+            val videos = mutableListOf<Video>()
+            
+            // Extract from the iframe URL directly if it's a known host
+            when {
+                frameLink.contains("streamwish") -> {
+                    StreamWishExtractor(client).videosFromUrl(frameLink, headers)?.let { 
+                        videos.addAll(it) 
+                    }
+                }
+                frameLink.contains("dood") -> {
+                    DoodExtractor(client).videosFromUrl(frameLink, headers)?.let { 
+                        videos.addAll(it) 
+                    }
+                }
+                frameLink.contains("mp4upload") -> {
+                    Mp4UploadExtractor(client).videosFromUrl(frameLink, headers)?.let { 
+                        videos.addAll(it) 
+                    }
+                }
+                else -> {
+                    // For p2pplay and other hosts, try to follow redirects
+                    try {
+                        val frameResponse = client.newCall(GET(frameLink, headers)).execute()
+                        val frameHtml = frameResponse.use { it.body.string() }
+                        
+                        // Look for direct video links in the frame
+                        val videoRegex = """https?://[^"'\s]*\.(mp4|m3u8|mkv|avi)[^"'\s]*""".toRegex()
+                        val matches = videoRegex.findAll(frameHtml)
+                        
+                        matches.forEach { match ->
+                            val url = match.value
+                            videos.add(Video(url, "Direct Link", url))
+                        }
+                    } catch (e: Exception) {
+                        // If extraction fails, return empty list
+                    }
+                }
+            }
+            
+            videos
         } else {
             emptyList()
         }
     }
+
     override fun videoListSelector() = throw UnsupportedOperationException()
     override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
