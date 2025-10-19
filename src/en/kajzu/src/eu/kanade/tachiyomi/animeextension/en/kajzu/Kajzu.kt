@@ -48,13 +48,13 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return SAnime.create().apply {
             val link = element.selectFirst("a") ?: return@apply
             setUrlWithoutDomain(link.attr("href"))
-            
+
             // Get title from h3 or from the link title attribute
             title = element.selectFirst("h3")?.text()?.trim()
                 ?: link.attr("title").takeIf { it.isNotBlank() }
                 ?: link.text().trim()
                 ?: "Unknown Title"
-                
+
             thumbnail_url = element.selectFirst("img")?.let { img ->
                 img.attr("src").takeIf { src -> src.isNotBlank() }
                     ?: img.attr("data-src")
@@ -112,7 +112,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                 val td = row.selectFirst("td")?.text() ?: return@forEach
 
                 when {
-                    th.contains("Category", ignoreCase = true) || 
+                    th.contains("Category", ignoreCase = true) ||
                     th.contains("Genre", ignoreCase = true) -> {
                         val genreLinks = row.select("a")
                         if (genreLinks.isNotEmpty()) {
