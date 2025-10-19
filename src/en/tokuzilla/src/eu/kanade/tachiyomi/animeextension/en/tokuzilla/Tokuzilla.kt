@@ -1,33 +1,73 @@
-Task :lib:chillx-extractor:bundleLibCompileToJarRelease
-> Task :lib:chillx-extractor:syncReleaseLibJars FROM-CACHE
-> Task :lib:chillx-extractor:bundleReleaseLocalLintAar
-> Task :lib:chillx-extractor:generateReleaseLintModel
-/home/runner/work/aniyomi-extensions/aniyomi-extensions/src/en/tokuzilla/src/eu/kanade/tachiyomi/animeextension/en/tokuzilla/Tokuzilla.kt:164:20: Lint error > [standard:wrapping] Missing newline after "("
+package eu.kanade.tachiyomi.animeextension.en.tokuzilla
 
-/home/runner/work/aniyomi-extensions/aniyomi-extensions/src/en/tokuzilla/src/eu/kanade/tachiyomi/animeextension/en/tokuzilla/Tokuzilla.kt:169:13: Lint error > [standard:wrapping] Missing newline before ")"
-> Task :src:en:tokuzilla:lintKotlinMain FAILED
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_2-1760855253813.json
+import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
+import eu.kanade.tachiyomi.lib.chillxextractor.ChillxExtractor
+import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.Request
+import okhttp3.Response
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 
-[Incubating] Problems report is available at: file:///home/runner/work/aniyomi-extensions/aniyomi-extensions/build/reports/problems/problems-report.html
+class Tokuzilla : ParsedAnimeHttpSource() {
 
+    override val name = "Tokuzilla"
+    override val baseUrl = "https://tokuzl.net"
+    override val lang = "en"
+    override val supportsLatest = true
 
-FAILURE: Build failed with an exception.
+    override fun popularAnimeSelector() = "div.col-sm-3.col-xs-6.item"
+    override fun popularAnimeRequest(page: Int) = GET("$baseUrl/page/$page")
+    override fun popularAnimeFromElement(element: Element) = SAnime.create().apply {
+        element.selectFirst("a")!!.run {
+            setUrlWithoutDomain(attr("href"))
+            title = attr("title")
+        }
+        thumbnail_url = element.selectFirst("img")!!.attr("src")
+    }
+    override fun popularAnimeNextPageSelector() = "a.next.page-numbers"
 
-* What went wrong:
-Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
-Execution failed for task ':src:en:tokuzilla:lintKotlinMain'.
+    override fun latestUpdatesSelector() = popularAnimeSelector()
+    override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/page/$page")
+    override fun latestUpdatesFromElement(element: Element) = popularAnimeFromElement(element)
+    override fun latestUpdatesNextPageSelector() = popularAnimeNextPageSelector()
 
-> lintKotlinMain sources failed lint check
-You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+    override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
+    override fun searchAnimeNextPageSelector() = popularAnimeNextPageSelector()
+    override fun searchAnimeSelector() = popularAnimeSelector()
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList) = GET("$baseUrl/page/$page?s=$query")
 
+    override fun animeDetailsParse(document: Document) = SAnime.create().apply {
+        title = document.selectFirst("h1")?.text() ?: ""
+        thumbnail_url = document.selectFirst("meta[property=og:image]")?.attr("content")
+    }
 
-* Try:
-For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
-120 actionable tasks: 76 executed, 44 from cache
-> Run with --stacktrace option to get the stack trace.
-> Run with --info or --debug option to get more log output.
-> Run with --scan to get full insights.
-> Get more help at https://help.gradle.org.
+    override fun episodeListSelector() = "ul.pagination.post-tape a"
+    override fun episodeListParse(response: Response): List<SEpisode> {
+        val document = response.asJsoup()
+        return document.select(episodeListSelector()).mapIndexed { index, element ->
+            SEpisode.create().apply {
+                setUrlWithoutDomain(element.attr("href"))
+                name = "Episode ${index + 1}"
+                episode_number = (index + 1).toFloat()
+            }
+        }
+    }
+    override fun episodeFromElement(element: Element) = throw UnsupportedOperationException()
 
-BUILD FAILED in 41s
-Error: Process completed with exit code 1.
+    override fun videoListParse(response: Response): List<Video> {
+        val document = response.asJsoup()
+        val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
+        return if (frameLink != null) {
+            ChillxExtractor(client, headers).videoFromUrl(frameLink, baseUrl)
+        } else {
+            emptyList()
+        }
+    }
+    override fun videoListSelector() = throw UnsupportedOperationException()
+    override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
+    override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
+}
