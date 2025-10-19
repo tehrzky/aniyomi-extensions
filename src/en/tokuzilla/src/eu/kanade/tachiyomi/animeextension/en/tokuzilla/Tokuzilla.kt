@@ -5,8 +5,6 @@ import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
-import eu.kanade.tachiyomi.lib.doodextractor.DoodExtractor
-import eu.kanade.tachiyomi.lib.mp4uploadextractor.Mp4UploadExtractor
 import eu.kanade.tachiyomi.lib.streamwishextractor.StreamWishExtractor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
@@ -66,50 +64,47 @@ class Tokuzilla : ParsedAnimeHttpSource() {
         val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
 
         return if (frameLink != null) {
-            // Try multiple extractors for different video hosts
-            val videos = mutableListOf<Video>()
-
-            // Extract from the iframe URL directly if it's a known host
-            when {
-                frameLink.contains("streamwish") -> {
-                    StreamWishExtractor(client).videosFromUrl(frameLink, headers)?.let {
-                        videos.addAll(it)
-                    }
-                }
-                frameLink.contains("dood") -> {
-                    DoodExtractor(client).videosFromUrl(frameLink, headers)?.let {
-                        videos.addAll(it)
-                    }
-                }
-                frameLink.contains("mp4upload") -> {
-                    Mp4UploadExtractor(client).videosFromUrl(frameLink, headers)?.let {
-                        videos.addAll(it)
-                    }
-                }
-                else -> {
-                    // For p2pplay and other hosts, try to follow redirects
-                    try {
-                        val frameResponse = client.newCall(GET(frameLink, headers)).execute()
-                        val frameHtml = frameResponse.use { it.body.string() }
-
-                        // Look for direct video links in the frame
-                        val videoRegex = """https?://[^"'\s]*\.(mp4|m3u8|mkv|avi)[^"'\s]*""".toRegex()
-                        val matches = videoRegex.findAll(frameHtml)
-
-                        matches.forEach { match ->
-                            val url = match.value
-                            videos.add(Video(url, "Direct Link", url))
-                        }
-                    } catch (e: Exception) {
-                        // If extraction fails, return empty list
-                    }
-                }
+            // Try StreamWish extractor first
+            try {
+                StreamWishExtractor(client).videosFromUrl(frameLink)
+            } catch (e: Exception) {
+                // If StreamWish fails, try to extract direct links
+                extractDirectVideoLinks(frameLink)
             }
-
-            videos
         } else {
             emptyList()
         }
+    }
+
+    private fun extractDirectVideoLinks(url: String): List<Video> {
+        val videos = mutableListOf<Video>()
+        try {
+            val response = client.newCall(GET(url, headers)).execute()
+            val html = response.use { it.body.string() }
+            
+            // Look for common video file patterns
+            val videoPatterns = listOf(
+                """https?://[^"'\s]*\.mp4[^"'\s]*""",
+                """https?://[^"'\s]*\.m3u8[^"'\s]*""",
+                """https?://[^"'\s]*\.mkv[^"'\s]*""",
+                """file:\s*["']([^"']+)["']""",
+                """src:\s*["']([^"']+)["']"""
+            )
+            
+            videoPatterns.forEach { pattern ->
+                val regex = pattern.toRegex()
+                val matches = regex.findAll(html)
+                matches.forEach { match ->
+                    val videoUrl = match.value
+                    if (videoUrl.startsWith("http")) {
+                        videos.add(Video(videoUrl, "Direct", videoUrl))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore errors and return empty list
+        }
+        return videos
     }
 
     override fun videoListSelector() = throw UnsupportedOperationException()
