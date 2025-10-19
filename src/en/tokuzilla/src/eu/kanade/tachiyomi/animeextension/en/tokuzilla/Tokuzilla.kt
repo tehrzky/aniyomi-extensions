@@ -105,7 +105,7 @@ class TokuzlExtractor(private val client: OkHttpClient) {
                 println("DEBUG: No iframe found")
                 return emptyList()
             }
-            
+
             val iframeUrl = iframeElement.attr("src")
             println("DEBUG: Found iframe URL: $iframeUrl")
 
