@@ -1,8 +1,6 @@
 package eu.kanade.tachiyomi.animeextension.en.kajzu
 
 import android.app.Application
-import android.widget.Toast
-import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
@@ -32,13 +30,8 @@ import java.util.Locale
 class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
     override val name = "Kajzu"
-
-    override val baseUrl by lazy {
-        preferences.getString(PREF_DOMAIN_KEY, PREF_DOMAIN_DEFAULT)!!.trimEnd('/')
-    }
-
+    override val baseUrl = "https://kajzu.com"
     override val lang = "en"
-
     override val supportsLatest = true
 
     private val preferences by lazy {
@@ -50,14 +43,20 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/kamen-rider")
     }
 
-    override fun popularAnimeSelector(): String = ".list-popular li a, article.post-item a, .anime-item a"
+    override fun popularAnimeSelector(): String = "div.item.post"
 
     override fun popularAnimeFromElement(element: Element): SAnime {
         return SAnime.create().apply {
-            setUrlWithoutDomain(element.attr("href"))
-            title = element.attr("title").takeIf { it.isNotBlank() }
-                ?: element.selectFirst("h2, h3, .title")?.text()
-                ?: element.text()
+            val link = element.selectFirst("a") ?: return@apply
+            setUrlWithoutDomain(link.attr("href"))
+            title = link.attr("title").takeIf { it.isNotBlank() }
+                ?: element.selectFirst("h3")?.text()
+                ?: element.selectFirst("a")?.text()
+                ?: "Unknown"
+            thumbnail_url = element.selectFirst("img")?.let {
+                it.attr("src").takeIf { src -> src.isNotBlank() }
+                    ?: it.attr("data-src")
+            }
         }
     }
 
@@ -68,19 +67,10 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET(baseUrl)
     }
 
-    override fun latestUpdatesSelector(): String = ".list-episode-item li a, article.post-item a, .anime-item a"
+    override fun latestUpdatesSelector(): String = "div.item.post"
 
     override fun latestUpdatesFromElement(element: Element): SAnime {
-        return SAnime.create().apply {
-            setUrlWithoutDomain(element.attr("href"))
-            thumbnail_url = element.selectFirst("img")?.attr("src")
-                ?: element.selectFirst("img")?.attr("data-src")
-            val fullTitle = element.selectFirst("h3.title, h2, .title")?.text() ?: "Unknown Title"
-            title = fullTitle.substringBefore("Episode")
-                .substringBefore("episode")
-                .substringBefore("Ep")
-                .trim()
-        }
+        return popularAnimeFromElement(element)
     }
 
     override fun latestUpdatesNextPageSelector(): String? = null
@@ -90,10 +80,10 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         return GET("$baseUrl/?s=${query.encodeURL()}")
     }
 
-    override fun searchAnimeSelector(): String = ".list-episode-item li a, article.post-item a, .search-result a, .anime-item a"
+    override fun searchAnimeSelector(): String = "div.item.post"
 
     override fun searchAnimeFromElement(element: Element): SAnime {
-        return latestUpdatesFromElement(element)
+        return popularAnimeFromElement(element)
     }
 
     override fun searchAnimeNextPageSelector(): String? = null
@@ -101,47 +91,54 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     // =========================== Anime Details ============================
     override fun animeDetailsParse(document: Document): SAnime {
         return SAnime.create().apply {
-            val fullTitle = document.selectFirst("h1, h2.title, .anime-title")?.text() ?: "Unknown Title"
-            title = fullTitle.substringBefore("Episode")
-                .substringBefore("episode")
-                .trim()
+            title = document.selectFirst("h1")?.text() ?: "Unknown"
 
-            thumbnail_url = document.selectFirst("img.poster, .poster img, .thumbnail img, img.cover")?.attr("src")
-                ?: document.selectFirst("img")?.attr("src")
+            thumbnail_url = document.selectFirst("img[fifulocal-featured], img.wp-post-image")?.let {
+                it.attr("src").takeIf { src -> src.isNotBlank() }
+                    ?: it.attr("data-src")
+            }
 
-            val rawDescription = document.selectFirst("meta[name=description]")?.attr("content")
-                ?: document.selectFirst(".description, .synopsis, .content")?.text()
-                ?: ""
-            description = rawDescription.substringAfter(":").trim().ifBlank { rawDescription }
+            val descMeta = document.selectFirst("meta[name=description]")?.attr("content")
+            if (!descMeta.isNullOrBlank()) {
+                description = descMeta
+            }
 
-            document.select(".info p, .details p, .meta-info p").forEach { p ->
-                val text = p.text()
+            document.select("table.table tbody tr").forEach { row ->
+                val th = row.selectFirst("th")?.text() ?: return@forEach
+                val td = row.selectFirst("td")?.text() ?: return@forEach
+
                 when {
-                    text.contains("Genre:", ignoreCase = true) -> genre = p.select("a").joinToString { it.text() }
-                    text.contains("Status:", ignoreCase = true) -> status = parseStatus(p.select("a, span").last()?.text())
-                    text.contains("Network:", ignoreCase = true) -> author = p.select("a").text()
+                    th.contains("Category", ignoreCase = true) -> {
+                        val genreLinks = row.select("a")
+                        if (genreLinks.isNotEmpty()) {
+                            genre = genreLinks.joinToString(", ") { it.text() }
+                        }
+                    }
+                    th.contains("Status", ignoreCase = true) -> {
+                        status = parseStatus(td)
+                    }
                 }
             }
         }
     }
 
     // ============================== Episodes ==============================
-    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode-item-2.all-episode li a, .episode-list li a"
+    override fun episodeListSelector(): String = "ul.pagination.post-tape li a, ul.list-episode li a"
 
     override fun episodeFromElement(element: Element): SEpisode {
         return SEpisode.create().apply {
-            setUrlWithoutDomain(element.attr("href"))
-            val titleText = element.text()
+            val href = element.attr("href")
+            setUrlWithoutDomain(href)
 
-            val episodeNum = Regex("""ep=(\d+)""").find(element.attr("href"))?.groupValues?.get(1)
-                ?: Regex("""Episode\s*(\d+)""").find(titleText)?.groupValues?.get(1)
-                ?: Regex("""EP?\s*(\d+)""").find(titleText)?.groupValues?.get(1)
-                ?: Regex("""\b(\d+)\b""").find(titleText)?.groupValues?.get(1)
+            val episodeNum = Regex("""ep=(\d+)""").find(href)?.groupValues?.get(1)
+                ?: Regex("""episode[_-]?(\d+)""", RegexOption.IGNORE_CASE).find(href)?.groupValues?.get(1)
+                ?: element.text().let {
+                    Regex("""(\d+)""").find(it)?.groupValues?.get(1)
+                }
                 ?: "1"
 
             name = "Episode $episodeNum"
             episode_number = episodeNum.toFloatOrNull() ?: 1F
-            date_upload = element.selectFirst("span.time, .date")?.text().orEmpty().toDate()
         }
     }
 
@@ -149,143 +146,105 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val videos = mutableListOf<Video>()
-        val pageUrl = response.request.url.toString()
 
-        // Kajzu uses direct iframe embeds - extract the iframe src
+        // Look for iframe with video
         val iframeSrc = document.selectFirst("iframe#frame")?.attr("src")
             ?: document.selectFirst("div.player iframe")?.attr("src")
             ?: document.selectFirst("iframe[allowfullscreen]")?.attr("src")
 
-        if (!iframeSrc.isNullOrBlank()) {
-            var videoUrl = iframeSrc.toAbsoluteUrl()
+        if (iframeSrc.isNullOrBlank()) {
+            return listOf(
+                Video(
+                    response.request.url.toString(),
+                    "ERROR: No video player found on this page",
+                    response.request.url.toString(),
+                ),
+            )
+        }
 
-            // Handle URL shorteners/redirects by following them
-            if (videoUrl.contains("short.icu") || videoUrl.contains("bit.ly") || videoUrl.contains("tinyurl")) {
-                try {
-                    val finalUrl = client.newCall(GET(videoUrl, headers)).execute().request.url.toString()
-                    videoUrl = finalUrl
-                } catch (e: Exception) {
-                    videos.add(Video(videoUrl, "DEBUG: Failed to resolve redirect: ${e.message}", videoUrl))
-                }
-            }
+        var videoUrl = iframeSrc.toAbsoluteUrl()
 
-            // Now handle the actual streaming host
+        // Resolve shorteners
+        if (videoUrl.contains("short.icu") || videoUrl.contains("bit.ly") || videoUrl.contains("tinyurl")) {
             try {
-                when {
-                    videoUrl.contains("streamwish", ignoreCase = true) ||
-                        videoUrl.contains("strwish", ignoreCase = true) ||
-                        videoUrl.contains("wishfast", ignoreCase = true) -> {
-                        videos.addAll(
-                            StreamWishExtractor(client, headers).videosFromUrl(
-                                videoUrl,
-                                videoNameGen = { quality -> "StreamWish - $quality" },
-                            ),
-                        )
-                    }
-
-                    videoUrl.contains("vidhide", ignoreCase = true) ||
-                        videoUrl.contains("vidhidevip", ignoreCase = true) ||
-                        videoUrl.contains("vidspeeds", ignoreCase = true) -> {
-                        videos.addAll(
-                            VidHideExtractor(client, headers).videosFromUrl(
-                                videoUrl,
-                                videoNameGen = { quality -> "VidHide - $quality" },
-                            ),
-                        )
-                    }
-
-                    videoUrl.contains("streamtape", ignoreCase = true) ||
-                        videoUrl.contains("strtape", ignoreCase = true) -> {
-                        videos.addAll(
-                            StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape"),
-                        )
-                    }
-
-                    videoUrl.contains("mixdrop", ignoreCase = true) -> {
-                        videos.addAll(
-                            MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop"),
-                        )
-                    }
-
-                    videoUrl.contains("filemoon", ignoreCase = true) -> {
-                        videos.addAll(
-                            FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon"),
-                        )
-                    }
-
-                    videoUrl.contains("dood", ignoreCase = true) -> {
-                        videos.addAll(
-                            DoodExtractor(client).videosFromUrl(videoUrl, "Dood"),
-                        )
-                    }
-
-                    videoUrl.contains("mp4upload", ignoreCase = true) -> {
-                        videos.addAll(
-                            Mp4uploadExtractor(client).videosFromUrl(videoUrl, headers, "MP4Upload - "),
-                        )
-                    }
-
-                    videoUrl.contains("streamlare", ignoreCase = true) -> {
-                        videos.addAll(
-                            StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - "),
-                        )
-                    }
-
-                    videoUrl.contains("storage.googleapis.com") -> {
-                        // Direct Google Storage link
-                        videos.add(Video(videoUrl, "Google Storage - Direct Stream", videoUrl))
-                    }
-
-                    else -> {
-                        // Unknown host - try direct playback
-                        videos.add(Video(videoUrl, "Direct Stream", videoUrl))
-                    }
-                }
+                videoUrl = client.newCall(GET(videoUrl, headers)).execute().request.url.toString()
             } catch (e: Exception) {
-                videos.add(Video(videoUrl, "Error extracting video: ${e.message}", videoUrl))
+                return listOf(Video(iframeSrc, "Failed to resolve: ${e.message}", iframeSrc))
             }
         }
 
+        try {
+            when {
+                videoUrl.contains("streamwish", ignoreCase = true) ||
+                    videoUrl.contains("strwish", ignoreCase = true) -> {
+                    videos.addAll(
+                        StreamWishExtractor(client, headers).videosFromUrl(videoUrl),
+                    )
+                }
+
+                videoUrl.contains("vidhide", ignoreCase = true) -> {
+                    videos.addAll(
+                        VidHideExtractor(client, headers).videosFromUrl(videoUrl),
+                    )
+                }
+
+                videoUrl.contains("streamtape", ignoreCase = true) -> {
+                    videos.addAll(
+                        StreamTapeExtractor(client).videosFromUrl(videoUrl, "StreamTape"),
+                    )
+                }
+
+                videoUrl.contains("mixdrop", ignoreCase = true) -> {
+                    videos.addAll(
+                        MixDropExtractor(client).videosFromUrl(videoUrl, "MixDrop"),
+                    )
+                }
+
+                videoUrl.contains("filemoon", ignoreCase = true) -> {
+                    videos.addAll(
+                        FilemoonExtractor(client).videosFromUrl(videoUrl, "FileMoon"),
+                    )
+                }
+
+                videoUrl.contains("dood", ignoreCase = true) -> {
+                    videos.addAll(
+                        DoodExtractor(client).videosFromUrl(videoUrl, "Dood"),
+                    )
+                }
+
+                videoUrl.contains("mp4upload", ignoreCase = true) -> {
+                    videos.addAll(
+                        Mp4uploadExtractor(client).videosFromUrl(videoUrl, headers, "MP4Upload - "),
+                    )
+                }
+
+                videoUrl.contains("streamlare", ignoreCase = true) -> {
+                    videos.addAll(
+                        StreamlareExtractor(client).videosFromUrl(videoUrl, "Streamlare - "),
+                    )
+                }
+
+                else -> {
+                    videos.add(Video(videoUrl, "Direct Stream", videoUrl))
+                }
+            }
+        } catch (e: Exception) {
+            return listOf(Video(videoUrl, "Error: ${e.message}", videoUrl))
+        }
+
         return if (videos.isEmpty()) {
-            listOf(
-                Video(
-                    pageUrl,
-                    "ERROR: No video found. Make sure you're on an episode page.",
-                    pageUrl,
-                ),
-            )
+            listOf(Video(iframeSrc, "No streams found", iframeSrc))
         } else {
             videos
         }
     }
 
     override fun videoListSelector(): String = throw UnsupportedOperationException()
-
     override fun videoFromElement(element: Element): Video = throw UnsupportedOperationException()
-
     override fun videoUrlParse(document: Document): String = throw UnsupportedOperationException()
 
     // ============================== Settings ==============================
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        EditTextPreference(screen.context).apply {
-            key = PREF_DOMAIN_KEY
-            title = "Custom Domain"
-            summary = "Enter your preferred Kajzu domain (e.g., https://kajzu.com)"
-            setDefaultValue(PREF_DOMAIN_DEFAULT)
-            dialogTitle = "Domain Settings"
-            dialogMessage = "Enter the full URL of your preferred Kajzu site"
-
-            setOnPreferenceChangeListener { _, newValue ->
-                val newDomain = (newValue as String).trim()
-                if (newDomain.isBlank() || !newDomain.startsWith("http")) {
-                    Toast.makeText(screen.context, "Please enter a valid URL starting with http/https", Toast.LENGTH_LONG).show()
-                    false
-                } else {
-                    preferences.edit().putString(key, newDomain.trimEnd('/')).commit()
-                    true
-                }
-            }
-        }.also(screen::addPreference)
     }
 
     // ============================= Utilities ==============================
@@ -297,18 +256,16 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
                     video.quality.contains("720") -> 4
                     video.quality.contains("480") -> 3
                     video.quality.contains("360") -> 2
-                    video.quality.contains("Standard") -> 1
                     else -> 0
                 }
             },
         )
     }
 
-    private fun parseStatus(statusString: String?): Int {
-        val status = statusString?.lowercase() ?: return SAnime.UNKNOWN
+    private fun parseStatus(status: String?): Int {
         return when {
-            status.contains("ongoing") -> SAnime.ONGOING
-            status.contains("completed") -> SAnime.COMPLETED
+            status?.contains("Ongoing", ignoreCase = true) == true -> SAnime.ONGOING
+            status?.contains("Completed", ignoreCase = true) == true -> SAnime.COMPLETED
             else -> SAnime.UNKNOWN
         }
     }
@@ -321,20 +278,10 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
         }
     }
 
-    private fun String.toDate(): Long {
-        return runCatching {
-            DATE_FORMATTER.parse(trim())?.time
-        }.getOrNull() ?: 0L
-    }
-
     private fun String.encodeURL(): String = java.net.URLEncoder.encode(this, "UTF-8")
 
     companion object {
-        private val DATE_FORMATTER by lazy {
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
-        }
-
-        private const val PREF_DOMAIN_KEY = "preferred_domain"
-        private const val PREF_DOMAIN_DEFAULT = "https://kajzu.com"
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
 }
