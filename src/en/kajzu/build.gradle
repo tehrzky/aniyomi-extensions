@@ -1,1 +1,29 @@
 
+ext {
+    extName = 'Kajzu'
+    extClass = '.Kajzu'
+    extVersionCode = 1
+}
+
+apply from: "$rootDir/common.gradle"
+
+android {
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+
+dependencies {
+    // All extractors based on your lib folder
+    implementation project(':lib:streamwish-extractor')
+    implementation project(':lib:vidhide-extractor')
+    implementation project(':lib:streamtape-extractor')
+    implementation project(':lib:mixdrop-extractor')
+    implementation project(':lib:filemoon-extractor')
+    implementation project(':lib:dood-extractor')
+    implementation project(':lib:mp4upload-extractor')
+    implementation project(':lib:streamlare-extractor')
+}
