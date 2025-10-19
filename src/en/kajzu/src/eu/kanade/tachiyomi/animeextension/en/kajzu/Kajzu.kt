@@ -116,7 +116,7 @@ class Kajzu : ConfigurableAnimeSource, ParsedAnimeHttpSource() {
 
                 when {
                     th.contains("Category", ignoreCase = true) ||
-                    th.contains("Genre", ignoreCase = true) -> {
+                            th.contains("Genre", ignoreCase = true) -> {
                         val genreLinks = row.select("a")
                         if (genreLinks.isNotEmpty()) {
                             genre = genreLinks.joinToString(", ") { it.text() }
