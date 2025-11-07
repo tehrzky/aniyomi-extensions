@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.animeextension.en.tokuzilla
 
-import android.util.Base64
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
@@ -8,8 +7,6 @@ import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.ParsedAnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.util.asJsoup
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,7 +14,7 @@ import okhttp3.Response
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import uy.kohesive.injekt.injectLazy
+import java.util.Base64
 
 class Tokuzilla : ParsedAnimeHttpSource() {
 
@@ -25,9 +22,6 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override val baseUrl = "https://tokuzl.net"
     override val lang = "en"
     override val supportsLatest = true
-
-    private val json: Json by injectLazy()
-    private val extractor by lazy { TokuzlExtractor(client, headers, json) }
 
     override fun popularAnimeSelector() = "div.col-sm-3.col-xs-6.item"
     override fun popularAnimeRequest(page: Int) = GET("$baseUrl/page/$page", headers)
@@ -48,8 +42,7 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
     override fun searchAnimeNextPageSelector() = popularAnimeNextPageSelector()
     override fun searchAnimeSelector() = popularAnimeSelector()
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request =
-        GET("$baseUrl/page/$page?s=$query", headers)
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = GET("$baseUrl/page/$page?s=$query", headers)
 
     override fun animeDetailsParse(document: Document) = SAnime.create().apply {
         title = document.selectFirst("h1")?.text() ?: ""
@@ -72,186 +65,76 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val episodeName = document.selectFirst("h1")?.text() ?: "Episode"
-
+        
+        // Extract video ID from iframe
+        val iframeElement = document.selectFirst("iframe[id=frame]")
+        val iframeUrl = iframeElement?.attr("src") ?: return emptyList()
+        val videoId = iframeUrl.substringAfterLast("#")
+        
+        if (videoId.isBlank()) return emptyList()
+        
+        // Get the actual HLS stream from p2pplay API
+        return extractP2PPlayStreams(videoId, episodeName)
+    }
+    
+    private fun extractP2PPlayStreams(videoId: String, episodeName: String): List<Video> {
         return try {
-            extractor.videosFromUrl(response.request.url.toString(), episodeName)
-        } catch (e: Exception) {
-            // Fallback to iframe if extraction fails
-            val frameLink = document.selectFirst("iframe[id=frame]")?.attr("src")
-            if (frameLink != null) {
-                listOf(Video(frameLink, "P2PPlay - $episodeName", frameLink))
+            val videoApiUrl = "https://t1.p2pplay.pro/api/v1/video?id=$videoId&w=1920&h=1080&r=tokuzl.net"
+            val response = client.newCall(GET(videoApiUrl, headers)).execute()
+            
+            if (response.isSuccessful) {
+                val encodedData = response.use { it.body.string().trim() }
+                if (encodedData.isNotBlank()) {
+                    // Decode the base64 response
+                    val decodedBytes = Base64.getDecoder().decode(encodedData)
+                    val decodedData = String(decodedBytes)
+                    
+                    // Parse the HLS stream URL from the decoded data
+                    parseHlsStreams(decodedData, episodeName)
+                } else {
+                    emptyList()
+                }
             } else {
                 emptyList()
             }
+        } catch (e: Exception) {
+            emptyList()
         }
+    }
+    
+    private fun parseHlsStreams(data: String, episodeName: String): List<Video> {
+        val videos = mutableListOf<Video>()
+        
+        // Look for HLS stream patterns like:
+        // https://t1.p2pplay.pro/hls/.../index-f1-v1-a1.m3u8?v=...
+        val hlsRegex = Regex("""(https?://t1\.p2pplay\.pro/hls/[^\s"']+\.m3u8[^\s"']*)""")
+        
+        hlsRegex.findAll(data).forEach { match ->
+            val url = match.value
+            // Extract quality from the URL if possible
+            val quality = when {
+                url.contains("1080") -> "1080p"
+                url.contains("720") -> "720p" 
+                url.contains("480") -> "480p"
+                url.contains("360") -> "360p"
+                else -> "Auto"
+            }
+            videos.add(Video(url, "P2PPlay $quality - $episodeName", url))
+        }
+        
+        // If no HLS streams found, try to find any m3u8 URL
+        if (videos.isEmpty()) {
+            val m3u8Regex = Regex("""(https?://[^\s"']+\.m3u8[^\s"']*)""")
+            m3u8Regex.findAll(data).forEach { match ->
+                val url = match.value
+                videos.add(Video(url, "HLS Stream - $episodeName", url))
+            }
+        }
+        
+        return videos.distinctBy { it.url }
     }
 
     override fun videoListSelector() = throw UnsupportedOperationException()
     override fun videoFromElement(element: Element) = throw UnsupportedOperationException()
     override fun videoUrlParse(document: Document) = throw UnsupportedOperationException()
-}
-
-class TokuzlExtractor(
-    private val client: OkHttpClient,
-    private val headers: Headers,
-    private val json: Json,
-) {
-
-    @Serializable
-    data class VideoResponse(
-        val url: String? = null,
-        val sources: List<VideoSource>? = null,
-        val file: String? = null,
-    )
-
-    @Serializable
-    data class VideoSource(
-        val file: String,
-        val label: String? = null,
-        val type: String? = null,
-    )
-
-    fun videosFromUrl(url: String, name: String): List<Video> {
-        return try {
-            val mainBody = client.newCall(GET(url, headers)).execute().use { it.body.string() }
-            val document = Jsoup.parse(mainBody)
-
-            // Look for p2pplay iframe
-            val iframeElement = document.selectFirst("iframe[src*=\"p2pplay\"]")
-                ?: document.selectFirst("iframe[id=frame]")
-
-            if (iframeElement == null) {
-                return emptyList()
-            }
-
-            val iframeUrl = iframeElement.attr("src")
-
-            // Extract video ID from iframe URL (after the # symbol)
-            val videoId = when {
-                iframeUrl.contains("#") -> iframeUrl.substringAfterLast("#")
-                iframeUrl.contains("id=") -> iframeUrl.substringAfter("id=").substringBefore("&")
-                else -> return emptyList()
-            }
-
-            if (videoId.isBlank()) {
-                return emptyList()
-            }
-
-            extractP2PPlayStreams(videoId, name)
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun extractP2PPlayStreams(videoId: String, name: String): List<Video> {
-        val videos = mutableListOf<Video>()
-
-        try {
-            // Build API URL with proper parameters
-            val apiUrl = "https://t1.p2pplay.pro/api/v1/video?id=$videoId&w=1920&h=1080&r=tokuzl.net"
-
-            val apiHeaders = headers.newBuilder()
-                .add("Accept", "*/*")
-                .add("Referer", "https://tokuzl.net/")
-                .add("Origin", "https://tokuzl.net")
-                .build()
-
-            val response = client.newCall(GET(apiUrl, apiHeaders)).execute()
-
-            if (!response.isSuccessful) {
-                return emptyList()
-            }
-
-            val encodedData = response.use { it.body.string().trim() }
-
-            if (encodedData.isBlank()) {
-                return emptyList()
-            }
-
-            // Decode base64 response
-            val decodedBytes = Base64.decode(encodedData, Base64.DEFAULT)
-            val decodedData = String(decodedBytes)
-
-            // Try to parse as JSON first
-            videos.addAll(parseJsonResponse(decodedData, name))
-
-            // If no videos found via JSON, try regex parsing
-            if (videos.isEmpty()) {
-                videos.addAll(parseVideoUrlsFromText(decodedData, name))
-            }
-        } catch (e: Exception) {
-            // Silent fail
-        }
-
-        return videos.distinctBy { it.url }
-    }
-
-    private fun parseJsonResponse(data: String, name: String): List<Video> {
-        val videos = mutableListOf<Video>()
-
-        try {
-            // Try parsing as VideoResponse
-            val videoResponse = json.decodeFromString<VideoResponse>(data)
-
-            // Check for direct URL
-            videoResponse.url?.let { url ->
-                if (url.isNotBlank()) {
-                    val quality = extractQualityFromUrl(url)
-                    videos.add(Video(url, "TOKUZL $quality - $name", url))
-                }
-            }
-
-            // Check for file
-            videoResponse.file?.let { url ->
-                if (url.isNotBlank()) {
-                    val quality = extractQualityFromUrl(url)
-                    videos.add(Video(url, "TOKUZL $quality - $name", url))
-                }
-            }
-
-            // Check for sources array
-            videoResponse.sources?.forEach { source ->
-                val quality = source.label ?: extractQualityFromUrl(source.file)
-                videos.add(Video(source.file, "TOKUZL $quality - $name", source.file))
-            }
-        } catch (e: Exception) {
-            // Not valid JSON or different structure, will try regex parsing
-        }
-
-        return videos
-    }
-
-    private fun parseVideoUrlsFromText(data: String, name: String): List<Video> {
-        val videos = mutableListOf<Video>()
-
-        // Look for m3u8 URLs
-        val m3u8Regex = Regex("""(https?://[^\s"'<>]+\.m3u8[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
-        m3u8Regex.findAll(data).forEach { match ->
-            val url = match.value
-            val quality = extractQualityFromUrl(url)
-            videos.add(Video(url, "TOKUZL $quality - $name", url))
-        }
-
-        // Look for mp4 URLs
-        val mp4Regex = Regex("""(https?://[^\s"'<>]+\.mp4[^\s"'<>]*)""", RegexOption.IGNORE_CASE)
-        mp4Regex.findAll(data).forEach { match ->
-            val url = match.value
-            val quality = extractQualityFromUrl(url)
-            videos.add(Video(url, "TOKUZL $quality - $name", url))
-        }
-
-        return videos
-    }
-
-    private fun extractQualityFromUrl(url: String): String {
-        return when {
-            url.contains("1080", ignoreCase = true) || url.contains("fullhd", ignoreCase = true) -> "1080p"
-            url.contains("720", ignoreCase = true) || url.contains("hd", ignoreCase = true) -> "720p"
-            url.contains("480", ignoreCase = true) -> "480p"
-            url.contains("360", ignoreCase = true) -> "360p"
-            url.contains("240", ignoreCase = true) -> "240p"
-            url.contains("master", ignoreCase = true) || url.contains("index", ignoreCase = true) -> "Auto"
-            else -> "Default"
-        }
-    }
 }
