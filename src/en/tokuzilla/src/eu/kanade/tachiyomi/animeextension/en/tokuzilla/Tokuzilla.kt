@@ -11,7 +11,6 @@ import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.util.Base64
@@ -65,30 +64,30 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun videoListParse(response: Response): List<Video> {
         val document = response.asJsoup()
         val episodeName = document.selectFirst("h1")?.text() ?: "Episode"
-        
+
         // Extract video ID from iframe
         val iframeElement = document.selectFirst("iframe[id=frame]")
         val iframeUrl = iframeElement?.attr("src") ?: return emptyList()
         val videoId = iframeUrl.substringAfterLast("#")
-        
+
         if (videoId.isBlank()) return emptyList()
-        
+
         // Get the actual HLS stream from p2pplay API
         return extractP2PPlayStreams(videoId, episodeName)
     }
-    
+
     private fun extractP2PPlayStreams(videoId: String, episodeName: String): List<Video> {
         return try {
             val videoApiUrl = "https://t1.p2pplay.pro/api/v1/video?id=$videoId&w=1920&h=1080&r=tokuzl.net"
             val response = client.newCall(GET(videoApiUrl, headers)).execute()
-            
+
             if (response.isSuccessful) {
                 val encodedData = response.use { it.body.string().trim() }
                 if (encodedData.isNotBlank()) {
                     // Decode the base64 response
                     val decodedBytes = Base64.getDecoder().decode(encodedData)
                     val decodedData = String(decodedBytes)
-                    
+
                     // Parse the HLS stream URL from the decoded data
                     parseHlsStreams(decodedData, episodeName)
                 } else {
@@ -101,27 +100,27 @@ class Tokuzilla : ParsedAnimeHttpSource() {
             emptyList()
         }
     }
-    
+
     private fun parseHlsStreams(data: String, episodeName: String): List<Video> {
         val videos = mutableListOf<Video>()
-        
+
         // Look for HLS stream patterns like:
         // https://t1.p2pplay.pro/hls/.../index-f1-v1-a1.m3u8?v=...
         val hlsRegex = Regex("""(https?://t1\.p2pplay\.pro/hls/[^\s"']+\.m3u8[^\s"']*)""")
-        
+
         hlsRegex.findAll(data).forEach { match ->
             val url = match.value
             // Extract quality from the URL if possible
             val quality = when {
                 url.contains("1080") -> "1080p"
-                url.contains("720") -> "720p" 
+                url.contains("720") -> "720p"
                 url.contains("480") -> "480p"
                 url.contains("360") -> "360p"
                 else -> "Auto"
             }
             videos.add(Video(url, "P2PPlay $quality - $episodeName", url))
         }
-        
+
         // If no HLS streams found, try to find any m3u8 URL
         if (videos.isEmpty()) {
             val m3u8Regex = Regex("""(https?://[^\s"']+\.m3u8[^\s"']*)""")
@@ -130,7 +129,7 @@ class Tokuzilla : ParsedAnimeHttpSource() {
                 videos.add(Video(url, "HLS Stream - $episodeName", url))
             }
         }
-        
+
         return videos.distinctBy { it.url }
     }
 
