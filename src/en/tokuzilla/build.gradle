@@ -6,4 +6,6 @@ ext {
 
 apply from: "$rootDir/common.gradle"
 
-// No dependencies needed - everything is in one file
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
+}
