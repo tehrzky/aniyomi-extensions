@@ -64,36 +64,66 @@ class Tokuzilla : ParsedAnimeHttpSource() {
 
         // Extract video ID from iframe
         val iframeElement = document.selectFirst("iframe[id=frame]")
-        val iframeUrl = iframeElement?.attr("src") ?: return emptyList()
+        if (iframeElement == null) {
+            println("DEBUG: No iframe found")
+            return emptyList()
+        }
+        
+        val iframeUrl = iframeElement.attr("src")
+        println("DEBUG: Found iframe URL: $iframeUrl")
+        
         val videoId = iframeUrl.substringAfterLast("#")
+        if (videoId.isBlank()) {
+            println("DEBUG: No video ID found in iframe URL")
+            return emptyList()
+        }
 
-        if (videoId.isBlank()) return emptyList()
+        println("DEBUG: Extracted video ID: $videoId")
 
         // Get the actual HLS stream from p2pplay API
-        return extractP2PPlayStreams(videoId, episodeName)
+        val videos = extractP2PPlayStreams(videoId, episodeName)
+        println("DEBUG: Total videos extracted: ${videos.size}")
+        
+        return videos
     }
 
     private fun extractP2PPlayStreams(videoId: String, episodeName: String): List<Video> {
         return try {
             val videoApiUrl = "https://t1.p2pplay.pro/api/v1/video?id=$videoId&w=1920&h=1080&r=tokuzl.net"
+            println("DEBUG: Calling API: $videoApiUrl")
+
             val response = client.newCall(GET(videoApiUrl, headers)).execute()
+            println("DEBUG: API response code: ${response.code}")
 
             if (response.isSuccessful) {
                 val encodedData = response.use { it.body.string().trim() }
+                println("DEBUG: Encoded data length: ${encodedData.length}")
+                println("DEBUG: First 100 chars of encoded data: ${encodedData.take(100)}")
+
                 if (encodedData.isNotBlank()) {
                     // Decode the base64 response
-                    val decodedBytes = Base64.getDecoder().decode(encodedData)
-                    val decodedData = String(decodedBytes)
+                    try {
+                        val decodedBytes = Base64.getDecoder().decode(encodedData)
+                        val decodedData = String(decodedBytes)
+                        println("DEBUG: Decoded data length: ${decodedData.length}")
+                        println("DEBUG: First 200 chars of decoded data: ${decodedData.take(200)}")
 
-                    // Parse the HLS stream URL from the decoded data
-                    parseHlsStreams(decodedData, episodeName)
+                        // Parse the HLS stream URL from the decoded data
+                        parseHlsStreams(decodedData, episodeName)
+                    } catch (e: Exception) {
+                        println("DEBUG: Base64 decoding failed: ${e.message}")
+                        emptyList()
+                    }
                 } else {
+                    println("DEBUG: Empty encoded data")
                     emptyList()
                 }
             } else {
+                println("DEBUG: API call failed with code: ${response.code}")
                 emptyList()
             }
         } catch (e: Exception) {
+            println("DEBUG: API call exception: ${e.message}")
             emptyList()
         }
     }
@@ -104,9 +134,12 @@ class Tokuzilla : ParsedAnimeHttpSource() {
         // Look for HLS stream patterns like:
         // https://t1.p2pplay.pro/hls/.../index-f1-v1-a1.m3u8?v=...
         val hlsRegex = Regex("""(https?://t1\.p2pplay\.pro/hls/[^\s"']+\.m3u8[^\s"']*)""")
+        val hlsMatches = hlsRegex.findAll(data).toList()
+        println("DEBUG: Found ${hlsMatches.size} HLS URLs with specific pattern")
 
-        hlsRegex.findAll(data).forEach { match ->
+        hlsMatches.forEach { match ->
             val url = match.value
+            println("DEBUG: HLS URL found: $url")
             // Extract quality from the URL if possible
             val quality = when {
                 url.contains("1080") -> "1080p"
@@ -121,9 +154,23 @@ class Tokuzilla : ParsedAnimeHttpSource() {
         // If no HLS streams found, try to find any m3u8 URL
         if (videos.isEmpty()) {
             val m3u8Regex = Regex("""(https?://[^\s"']+\.m3u8[^\s"']*)""")
-            m3u8Regex.findAll(data).forEach { match ->
+            val m3u8Matches = m3u8Regex.findAll(data).toList()
+            println("DEBUG: Found ${m3u8Matches.size} generic m3u8 URLs")
+            
+            m3u8Matches.forEach { match ->
                 val url = match.value
+                println("DEBUG: Generic m3u8 URL: $url")
                 videos.add(Video(url, "HLS Stream - $episodeName", url))
+            }
+        }
+
+        // If still no videos, try to find any URL
+        if (videos.isEmpty()) {
+            val urlRegex = Regex("""(https?://[^\s"']+)""")
+            val allUrls = urlRegex.findAll(data).take(10).toList()
+            println("DEBUG: First 10 URLs found in data:")
+            allUrls.forEachIndexed { index, match ->
+                println("DEBUG: URL $index: ${match.value}")
             }
         }
 
