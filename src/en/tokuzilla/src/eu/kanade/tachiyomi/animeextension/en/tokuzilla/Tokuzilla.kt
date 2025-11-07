@@ -48,7 +48,7 @@ class Tokuzilla : ParsedAnimeHttpSource() {
     override fun searchAnimeFromElement(element: Element) = popularAnimeFromElement(element)
     override fun searchAnimeNextPageSelector() = popularAnimeNextPageSelector()
     override fun searchAnimeSelector() = popularAnimeSelector()
-    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request = 
+    override fun searchAnimeRequest(page: Int, query: String, filters: AnimeFilterList): Request =
         GET("$baseUrl/page/$page?s=$query", headers)
 
     override fun animeDetailsParse(document: Document) = SAnime.create().apply {
@@ -94,21 +94,21 @@ class Tokuzilla : ParsedAnimeHttpSource() {
 class TokuzlExtractor(
     private val client: OkHttpClient,
     private val headers: Headers,
-    private val json: Json
+    private val json: Json,
 ) {
 
     @Serializable
     data class VideoResponse(
         val url: String? = null,
         val sources: List<VideoSource>? = null,
-        val file: String? = null
+        val file: String? = null,
     )
 
     @Serializable
     data class VideoSource(
         val file: String,
         val label: String? = null,
-        val type: String? = null
+        val type: String? = null,
     )
 
     fun videosFromUrl(url: String, name: String): List<Video> {
@@ -117,15 +117,15 @@ class TokuzlExtractor(
             val document = Jsoup.parse(mainBody)
 
             // Look for p2pplay iframe
-            val iframeElement = document.selectFirst("iframe[src*=\"p2pplay\"]") 
+            val iframeElement = document.selectFirst("iframe[src*=\"p2pplay\"]")
                 ?: document.selectFirst("iframe[id=frame]")
-            
+
             if (iframeElement == null) {
                 return emptyList()
             }
 
             val iframeUrl = iframeElement.attr("src")
-            
+
             // Extract video ID from iframe URL (after the # symbol)
             val videoId = when {
                 iframeUrl.contains("#") -> iframeUrl.substringAfterLast("#")
@@ -145,11 +145,11 @@ class TokuzlExtractor(
 
     private fun extractP2PPlayStreams(videoId: String, name: String): List<Video> {
         val videos = mutableListOf<Video>()
-        
+
         try {
             // Build API URL with proper parameters
             val apiUrl = "https://t1.p2pplay.pro/api/v1/video?id=$videoId&w=1920&h=1080&r=tokuzl.net"
-            
+
             val apiHeaders = headers.newBuilder()
                 .add("Accept", "*/*")
                 .add("Referer", "https://tokuzl.net/")
@@ -157,13 +157,13 @@ class TokuzlExtractor(
                 .build()
 
             val response = client.newCall(GET(apiUrl, apiHeaders)).execute()
-            
+
             if (!response.isSuccessful) {
                 return emptyList()
             }
 
             val encodedData = response.use { it.body.string().trim() }
-            
+
             if (encodedData.isBlank()) {
                 return emptyList()
             }
@@ -174,12 +174,11 @@ class TokuzlExtractor(
 
             // Try to parse as JSON first
             videos.addAll(parseJsonResponse(decodedData, name))
-            
+
             // If no videos found via JSON, try regex parsing
             if (videos.isEmpty()) {
                 videos.addAll(parseVideoUrlsFromText(decodedData, name))
             }
-
         } catch (e: Exception) {
             // Silent fail
         }
@@ -189,11 +188,11 @@ class TokuzlExtractor(
 
     private fun parseJsonResponse(data: String, name: String): List<Video> {
         val videos = mutableListOf<Video>()
-        
+
         try {
             // Try parsing as VideoResponse
             val videoResponse = json.decodeFromString<VideoResponse>(data)
-            
+
             // Check for direct URL
             videoResponse.url?.let { url ->
                 if (url.isNotBlank()) {
@@ -201,7 +200,7 @@ class TokuzlExtractor(
                     videos.add(Video(url, "TOKUZL $quality - $name", url))
                 }
             }
-            
+
             // Check for file
             videoResponse.file?.let { url ->
                 if (url.isNotBlank()) {
@@ -209,7 +208,7 @@ class TokuzlExtractor(
                     videos.add(Video(url, "TOKUZL $quality - $name", url))
                 }
             }
-            
+
             // Check for sources array
             videoResponse.sources?.forEach { source ->
                 val quality = source.label ?: extractQualityFromUrl(source.file)
@@ -218,7 +217,7 @@ class TokuzlExtractor(
         } catch (e: Exception) {
             // Not valid JSON or different structure, will try regex parsing
         }
-        
+
         return videos
     }
 
