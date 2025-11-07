@@ -68,10 +68,10 @@ class Tokuzilla : ParsedAnimeHttpSource() {
             println("DEBUG: No iframe found")
             return emptyList()
         }
-        
+
         val iframeUrl = iframeElement.attr("src")
         println("DEBUG: Found iframe URL: $iframeUrl")
-        
+
         val videoId = iframeUrl.substringAfterLast("#")
         if (videoId.isBlank()) {
             println("DEBUG: No video ID found in iframe URL")
@@ -83,8 +83,14 @@ class Tokuzilla : ParsedAnimeHttpSource() {
         // Get the actual HLS stream from p2pplay API
         val videos = extractP2PPlayStreams(videoId, episodeName)
         println("DEBUG: Total videos extracted: ${videos.size}")
-        
-        return videos
+
+        // Fallback: return iframe URL if no videos found
+        return if (videos.isNotEmpty()) {
+            videos
+        } else {
+            println("DEBUG: No videos found, returning iframe URL as fallback")
+            listOf(Video(iframeUrl, "P2PPlay - $episodeName", iframeUrl))
+        }
     }
 
     private fun extractP2PPlayStreams(videoId: String, episodeName: String): List<Video> {
@@ -156,7 +162,7 @@ class Tokuzilla : ParsedAnimeHttpSource() {
             val m3u8Regex = Regex("""(https?://[^\s"']+\.m3u8[^\s"']*)""")
             val m3u8Matches = m3u8Regex.findAll(data).toList()
             println("DEBUG: Found ${m3u8Matches.size} generic m3u8 URLs")
-            
+
             m3u8Matches.forEach { match ->
                 val url = match.value
                 println("DEBUG: Generic m3u8 URL: $url")
